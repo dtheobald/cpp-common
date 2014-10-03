@@ -39,6 +39,7 @@
 #include <iostream>
 #include <map>
 
+#include "craft_ent_definitions.h"
 #include "utils.h"
 #include "log.h"
 #include "sas.h"
@@ -573,6 +574,8 @@ HTTPCode HttpConnection::send_request(const std::string& path,       //< Absolut
     }
     else
     {
+      CL_HTTP_COMM_ERR.log(url.c_str(), remote_ip, curl_easy_strerror(rc), rc);
+
       LOG_ERROR("%s failed at server %s : %s (%d %d) : fatal",
                 url.c_str(), remote_ip, curl_easy_strerror(rc), rc, http_rc);
 
