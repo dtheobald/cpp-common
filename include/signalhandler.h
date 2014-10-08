@@ -80,7 +80,7 @@ public:
 // LCOV_EXCL_START
       // Old handler is not the default handler, so someone else has previously
       // hooked the signal.
-      //      LOG_WARNING("SIGNAL already hooked");
+      LOG_WARNING("SIGNAL already hooked");
 // LCOV_EXCL_STOP
     }
   }
