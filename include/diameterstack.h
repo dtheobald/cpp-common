@@ -309,6 +309,7 @@ public:
   inline const Dictionary* dict() const {return _dict;}
   inline struct msg* fd_msg() const {return _fd_msg;}
   inline uint32_t command_code() const {return msg_hdr()->msg_code;}
+  inline uint32_t end_to_end_id() const {return msg_hdr()->msg_eteid;}
   inline void build_response(Message &msg)
   {
     // When we construct an answer from a request, freeDiameter associates
@@ -456,6 +457,7 @@ private:
   }
 
   void sas_add_serialization(SAS::Event& event);
+  void sas_add_marker(SAS::TrailId trail);
 };
 
 class AVP::iterator

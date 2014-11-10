@@ -1061,12 +1061,14 @@ void Message::sas_log_rx(SAS::TrailId trail, uint32_t instance_id)
 {
   SAS::Event event(trail, SASEvent::DIAMETER_RX, instance_id);
   sas_add_serialization(event);
+  sas_add_marker(trail);
 }
 
 void Message::sas_log_tx(SAS::TrailId trail, uint32_t instance_id)
 {
   SAS::Event event(trail, SASEvent::DIAMETER_TX, instance_id);
   sas_add_serialization(event);
+  sas_add_marker(trail);
 }
 
 void Message::sas_log_timeout(SAS::TrailId trail, uint32_t instance_id)
@@ -1092,4 +1094,13 @@ void Message::sas_add_serialization(SAS::Event& event)
 
   SAS::report_event(event);
   free(buf); buf = NULL;
+}
+
+void Message::sas_add_marker(SAS::TrailId trail)
+{
+  std::string origin_host;
+  get_origin_host(origin_host);
+  SAS::Marker marker(trail, MARKED_ID_GENERIC_CORRELATOR, 0);
+  marker.add_var_param(origin_host + ":" + std::to_string(end_to_end_id()));
+  SAS::report_marker(marker, SAS::Marker::Scope::Trace);
 }
