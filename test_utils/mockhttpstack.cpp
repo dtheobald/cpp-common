@@ -1,8 +1,8 @@
 /**
- * @file mockhttpstack.h Mock HTTP stack.
+ * @file mockhttpstack.cpp Mock HTTP stack.
  *
- * Project Clearwater - IMS in the Cloud
- * Copyright (C) 2013  Metaswitch Networks Ltd
+ * Project Clearwater - IMS in the cloud.
+ * Copyright (C) 2014  Metaswitch Networks Ltd
  *
  * This program is free software: you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the
@@ -34,49 +34,35 @@
  * as those licenses appear in the file LICENSE-OPENSSL.
  */
 
-#ifndef MOCKHTTPSTACK_H__
-#define MOCKHTTPSTACK_H__
+extern "C" {
+#include <evhtp.h>
+}
 
-#include "gmock/gmock.h"
-#include "httpstack.h"
+#include <mockhttpstack.hpp>
 
-class MockHttpStack : public HttpStack
+evhtp_request_t*
+MockHttpStack::Request::fake_evhtp_request_new(std::string path,
+                                               std::string file,
+                                               std::string query)
 {
-public:
-  class Request : public HttpStack::Request
-  {
-  public:
-    Request(HttpStack* stack, std::string path, std::string file, std::string query = "", std::string body = "", htp_method method = htp_method_GET) : HttpStack::Request(stack, fake_evhtp_request_new(path, file, query))
-    {
-      _rx_body = body;
-      _method = method;
-      _rx_body_set = true;
-    }
-    ~Request()
-    {
-      fake_evhtp_request_delete(_req);
-    }
-    std::string content()
-    {
-      size_t len = evbuffer_get_length(_req->buffer_out);
-      return std::string((char*)evbuffer_pullup(_req->buffer_out, len), len);
-    }
+  evhtp_request_t* req = evhtp_request_new(NULL, NULL);
+  req->conn = (evhtp_connection_t*)calloc(sizeof(evhtp_connection_t), 1);
+  req->conn->parser = htparser_new();
+  htparser_init(req->conn->parser, htp_type_request);
+  req->uri = (evhtp_uri_t*)calloc(sizeof(evhtp_uri_t), 1);
+  req->uri->path = (evhtp_path_t*)calloc(sizeof(evhtp_path_t), 1);
+  req->uri->path->full = strdup((path + file).c_str());
+  req->uri->path->file = strdup(file.c_str());
+  req->uri->path->path = strdup(path.c_str());
+  req->uri->path->match_start = (char*)calloc(1, 1);
+  req->uri->path->match_end = (char*)calloc(1, 1);
+  req->uri->query = evhtp_parse_query(query.c_str(), query.length());
+  return req;
+}
 
-  private:
-    static evhtp_request_t* fake_evhtp_request_new(std::string path,
-                                                   std::string file,
-                                                   std::string query = "");
-    static void fake_evhtp_request_delete(evhtp_request_t* req);
-  };
-
-  MOCK_METHOD0(initialize, void());
-  MOCK_METHOD4(configure, void(const std::string&, unsigned short, int, AccessLogger*));
-  MOCK_METHOD2(register_handler, void(char*, HandlerInterface*));
-  MOCK_METHOD0(start, void());
-  MOCK_METHOD0(stop, void());
-  MOCK_METHOD0(wait_stopped, void());
-  MOCK_METHOD3(send_reply, void(HttpStack::Request&, int, SAS::TrailId));
-  MOCK_METHOD0(record_penalty, void());
-};
-
-#endif
+void MockHttpStack::Request::fake_evhtp_request_delete(evhtp_request_t* req)
+{
+  free(req->conn->parser);
+  free(req->conn);
+  evhtp_request_free(req);
+}
