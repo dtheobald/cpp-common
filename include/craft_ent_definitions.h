@@ -65,7 +65,7 @@ extern "C" {
 /// The call to output to syslog is in the method,  dcealog.
 /// Most of the derived classes are templates.  The paremeterized types
 /// being values that are output as a formatted string in the Message field.
-class PDLogBase 
+class PDLogBase
 {
 public:
   static const int MAX_FORMAT_LINE = 1024;
