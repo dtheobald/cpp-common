@@ -63,6 +63,14 @@ extern "C" {
 ///   Action - A list of one or more actions to take to resolve the condition if it is an error.
 /// The elements of the class are used to format a syslog call.
 /// The call to output to syslog is in the method,  dcealog.
+/// By default syslog limits a total syslog message size to 2048 bytes.  Anything
+/// above the limit is truncated.  The fromatted message, cause, effect, and action(s) are
+/// concatenated into the syslog message.  Note, as an arbitrary convention, for more
+/// than a signle action, the actions are numbered as (1)., (2)., ...  to make the actions
+/// easier to read within the syslog message.  syslog removes extra whitespace and
+/// carriage-returns/linefeeds before inserting the complete string into a message.
+/// Note also, the action(s) are a list of strings with all but the last string having a
+/// space character at the end.  The space makes the actions more readable.
 /// Most of the derived classes are templates.  The paremeterized types
 /// being values that are output as a formatted string in the Message field.
 class PDLogBase
@@ -261,50 +269,54 @@ static const PDLog CL_DIAMETER_START
 (
   PDLogBase::CL_CPP_COMMON_ID + 1,
   PDLOG_NOTICE,
-  "Diameter stack is starting",
-  "Diameter stack is beginning initialization",
-  "Normal",
-  "None"
+  "Diameter stack is starting.",
+  "Diameter stack is beginning initialization.",
+  "Normal.",
+  "None."
 );
+
 static const PDLog CL_DIAMETER_INIT_CMPL
 (
   PDLogBase::CL_CPP_COMMON_ID + 2,
   PDLOG_NOTICE,
-  "Diameter stack initialization completed",
-  "Diameter stack has completed initialization",
-  "Normal",
-  "None"
+  "Diameter stack initialization completed.",
+  "Diameter stack has completed initialization.",
+  "Normal.",
+  "None."
 );
+
 static const PDLog4<const char*, int, const char*, const char*> CL_DIAMETER_ROUTE_ERR
 (
   PDLogBase::CL_CPP_COMMON_ID + 3,
   PDLOG_ERR,
-  "Diameter routing error: %s for message with Command-Code %d, Destination-Host %s and Destination-Realm %s",
-  "No route was found for a Diameter message",
-  "The Diameter message with the specified command code could not be routed to the destination host within the destination realm",
+  "Diameter routing error: %s for message with Command-Code %d, Destination-Host %s and Destination-Realm %s.",
+  "No route was found for a Diameter message.",
+  "The Diameter message with the specified command code could not be routed to the destination host within the destination realm.",
   "(1). Check the installation guide for Diameter host configuration. "
   "(2). Check to see that there is a route to the destination host. "
   "(3). Check for IP connectivity between the homestead host and the HSS host using ping. "
   "(4). Wireshark the interface on homestead and the HSS."
 );
+
 static const PDLog1<const char*> CL_DIAMETER_CONN_ERR
 (
   PDLogBase::CL_CPP_COMMON_ID + 4,
   PDLOG_ERR,
-  "Failed to make a Diameter connection to host %s",
-  "A Diameter connection attempt failed to the specified host",
-  "This impacts the ability to register, subscribe, or make a call",
+  "Failed to make a Diameter connection to host %s.",
+  "A Diameter connection attempt failed to the specified host.",
+  "This impacts the ability to register, subscribe, or make a call.",
   "(1). Check the installation guide for Diameter host configuration. "
   "(2). Check to see that there is a route to the destination host. "
   "(3). Check for IP connectivity between the homestead host and the HSS host using ping. "
   "(4). Wireshark the interface on homestead and the HSS."
 );
+
 static const PDLog4<const char*, const char*, const char*, int> CL_HTTP_COMM_ERR
 (
   PDLogBase::CL_CPP_COMMON_ID + 5,
   PDLOG_ERR,
-  "%s failed to communicate with http server %s with curl error %s code %d",
-  "An HTTP connection attempt failed to the specified server with the specified error code",
+  "%s failed to communicate with http server %s with curl error %s code %d.",
+  "An HTTP connection attempt failed to the specified server with the specified error code.",
   "This condition impacts the ability to register, subscribe, or make a call.",
   "(1). Check to see if the specified host has failed. "
   "(2). Check to see if there is TCP connectivity to the host by using ping and/or Wireshark."
