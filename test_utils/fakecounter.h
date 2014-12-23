@@ -1,5 +1,5 @@
 /**
- * @file zmq_lvc.h
+ * @file fakecounter.h class definition for a fake statistics counter
  *
  * Project Clearwater - IMS in the Cloud
  * Copyright (C) 2013  Metaswitch Networks Ltd
@@ -34,67 +34,25 @@
  * as those licenses appear in the file LICENSE-OPENSSL.
  */
 
-#ifndef STATISTIC_H__
-#define STATISTIC_H__
+#ifndef FAKECOUNTER_H__
+#define FAKECOUNTER_H__
 
-#include <map>
-#include <vector>
-#include <string>
-#include <zmq.h>
+#include <atomic>
+#include <time.h>
 
-#define ZMQ_NEW_SUBSCRIPTION_MARKER 1
+#include "counter.h"
 
-// This folder has to exist and be writable by the running process.
-#define ZMQ_IPC_FOLDER_PATH "/var/run/clearwater/stats/"
-
-class LastValueCache
+/// @class FakeCounter
+///
+/// Counts events over a set period, pushing the total number as the statistic
+class FakeCounter : public Counter
 {
 public:
-  /// Standard constructor
-  ///
-  /// @param   statcount - The number of statistics to connect to.
-  /// @param   statnames - An array of statistics to connect to.
-  /// @param   process_name - The name of the current process.
-  /// @param   poll_timeout_ms - Used to shorten poll times in UT.
-  LastValueCache(int statcount,
-                 const std::string *statnames,
-                 std::string process_name,
-                 long poll_timeout_ms = 1000);
-  ~LastValueCache();
+  inline FakeCounter(uint_fast64_t period_us = DEFAULT_PERIOD_US) : Counter(period_us) {}
 
-  /// Retrive the publish socket for a given statistic.  Statistics
-  /// generators can use this to report changes.
-  ///
-  /// @param  statname - The statistic to be reported.
-  /// @returns         - A connected 0mq XPUB socket.
-  void* get_internal_publisher(std::string statname);
-
-  /// Call to start the processing on the current thread.
-  ///
-  /// This is a blocking call.
-  void run();
-
-private:
-  void clear_cache(void *entry);
-  void replay_cache(void *entry);
-
-  void **_subscriber;
-  void *_publisher;
-  std::map<void *, std::vector<zmq_msg_t *>> _cache;
-  pthread_t _cache_thread;
-  void *_context;
-  int _statcount;
-  const std::string *_statnames;
-  std::string _process_name;
-  const long _poll_timeout_ms;
-  volatile bool _terminate;
-
-  /// A bound 0MQ socket per statistic, for use by the internal
-  // publishers. At most one thread may use each socket at
-  // a time.
-  std::map<std::string, void*> _internal_publishers;
-
-  static void* last_value_cache_entry_func(void *);
+  /// Callback whenever the accumulated statistics are refreshed.   Does nothing.
+  virtual void refreshed() {};
 };
 
 #endif
+

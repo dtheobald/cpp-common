@@ -121,6 +121,7 @@ Store::Store(const std::string& keyspace) :
   _num_threads(0),
   _max_queue(0),
   _thread_pool(NULL),
+  _comm_monitor(NULL),
   _thread_local()
 {
   // Create the thread-local storage that stores cassandra connections.
@@ -138,7 +139,8 @@ void Store::initialize()
 void Store::configure(std::string cass_hostname,
                       uint16_t cass_port,
                       unsigned int num_threads,
-                      unsigned int max_queue)
+                      unsigned int max_queue,
+                      CommunicationMonitor* comm_monitor)
 {
   LOG_STATUS("Configuring store");
   LOG_STATUS("  Hostname:  %s", cass_hostname.c_str());
@@ -149,10 +151,45 @@ void Store::configure(std::string cass_hostname,
   _cass_port = cass_port;
   _num_threads = num_threads;
   _max_queue = max_queue;
+  _comm_monitor = comm_monitor;
 }
 
 
 ResultCode Store::start()
+{
+  ResultCode rc = OK;
+
+  // Start the store.  We don't check for connectivity to Cassandra at this
+  // point as some store users want the store to load even when Cassandra has
+  // failed (it will recover later).  If a store user cares about the status
+  // of Cassandra it should use the test() method.
+  LOG_STATUS("Starting store");
+
+  // Start the thread pool.
+  if (_num_threads > 0)
+  {
+    _thread_pool = new Pool(this, _num_threads, _max_queue);
+
+    if (!_thread_pool->start())
+    {
+      rc = RESOURCE_ERROR; // LCOV_EXCL_LINE
+    }
+  }
+
+  return rc;
+}
+
+
+void Store::stop()
+{
+  LOG_STATUS("Stopping cache");
+  if (_thread_pool != NULL)
+  {
+    _thread_pool->stop();
+  }
+}
+
+ResultCode Store::connection_test()
 {
   ResultCode rc = OK;
 
@@ -181,33 +218,8 @@ ResultCode Store::start()
     rc = UNKNOWN_ERROR;
   }
 
-  // Start the thread pool.
-  if (rc == OK)
-  {
-    if (_num_threads > 0)
-    {
-      _thread_pool = new Pool(this, _num_threads, _max_queue);
-
-      if (!_thread_pool->start())
-      {
-        rc = RESOURCE_ERROR; // LCOV_EXCL_LINE
-      }
-    }
-  }
-
   return rc;
 }
-
-
-void Store::stop()
-{
-  LOG_STATUS("Stopping cache");
-  if (_thread_pool != NULL)
-  {
-    _thread_pool->stop();
-  }
-}
-
 
 void Store::wait_stopped()
 {
@@ -322,6 +334,7 @@ void Store::do_async(Operation*& op, Transaction*& trx)
 bool Store::run(Operation* op, SAS::TrailId trail)
 {
   bool success = false;
+  ClientInterface* client = NULL;
   ResultCode cass_result = OK;
   std::string cass_error_text = "";
 
@@ -329,9 +342,6 @@ bool Store::run(Operation* op, SAS::TrailId trail)
   // Only try once, unless there's connection error, in which case try twice.
   bool retry = false;
   int attempt_count = 0;
-
-  // Get a client to execute the operation.
-  ClientInterface* client = get_client();
 
   // Call perform() to actually do the business logic of the request.  Catch
   // exceptions and turn them into return codes and error text.
@@ -342,6 +352,10 @@ bool Store::run(Operation* op, SAS::TrailId trail)
     try
     {
       attempt_count++;
+
+      // Get a client to execute the operation.
+      client = get_client();
+
       success = op->perform(client, trail);
     }
     catch(TTransportException& te)
@@ -363,18 +377,8 @@ bool Store::run(Operation* op, SAS::TrailId trail)
         // Connection error, destroy and recreate the connection, and retry the
         //  request once
         LOG_DEBUG("Connection error, retrying");
-        try
-        {
-          client = get_client();
-          retry = true;
-          cass_result = OK;
-        }
-        catch(...)
-        {
-          // If there's any error recreating the connection just catch the
-          // exception, and the connection will be recreated in the next cycle
-          LOG_ERROR("Cache caught unknown exception");
-        }
+        retry = true;
+        cass_result = OK;
       }
     }
     catch(InvalidRequestException& ire)
@@ -403,8 +407,27 @@ bool Store::run(Operation* op, SAS::TrailId trail)
   }
   while (retry);
 
-  if (cass_result != OK)
+  if (cass_result == OK)
   {
+    if (_comm_monitor)
+    {
+      _comm_monitor->inform_success();
+    }
+  }
+  else
+  {
+    if (_comm_monitor)
+    {
+      if (cass_result == CONNECTION_ERROR)
+      {
+        _comm_monitor->inform_failure();
+      }
+      else
+      {
+        _comm_monitor->inform_success();
+      }
+    }
+
     LOG_ERROR("Cassandra request failed: rc=%d, %s",
               cass_result, cass_error_text.c_str());
     op->unhandled_exception(cass_result, cass_error_text, trail);

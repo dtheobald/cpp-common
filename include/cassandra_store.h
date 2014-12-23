@@ -71,6 +71,7 @@
 #include "threadpool.h"
 #include "utils.h"
 #include "sas.h"
+#include "communicationmonitor.h"
 
 // Shortcut for the apache cassandra namespace.
 namespace cass = org::apache::cassandra;
@@ -187,15 +188,18 @@ public:
   ///                          asynchronously.  If more requests are added the
   ///                          call to do_async() will block until some existing
   ///                          requests have been processed.  0 => no limit.
+  /// @param comm_monitor    - A monitor to track communication with the local
+  ///                          Cassandra instance, and set/clear alarms based on
+  ///                          recent activity.
   virtual void configure(std::string cass_hostname,
                          uint16_t cass_port,
                          unsigned int num_threads = 0,
-                         unsigned int max_queue = 0);
+                         unsigned int max_queue = 0,
+                         CommunicationMonitor* comm_monitor = NULL);
 
   /// Start the store.
   ///
-  /// Check that the store can connect to cassandra, and start any necessary
-  /// worker threads.
+  /// Start any necessary worker threads.
   ///
   /// @return                - The result of starting the store.
   virtual ResultCode start();
@@ -205,6 +209,14 @@ public:
   /// This discards any queued requests and terminates the worker threads once
   /// their current request has completed.
   virtual void stop();
+
+  /// Tests the store.
+  ///
+  /// Checks that the store can connect to Cassandra.  This method can be called
+  /// before or after starting the store.
+  ///
+  /// @return                - The status of the store connection.
+  virtual ResultCode connection_test();
 
   /// Wait until the store has completely stopped.  This method may block.
   virtual void wait_stopped();
@@ -275,6 +287,10 @@ private:
   unsigned int _num_threads;
   unsigned int _max_queue;
   Pool* _thread_pool;
+
+  // Helper used to track local communication state, and issue/clear alarms
+  // based upon recent activity.
+  CommunicationMonitor* _comm_monitor;
 
   /// Execute an operation.
   ///

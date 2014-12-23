@@ -1,8 +1,8 @@
 /**
- * @file mockdiameterstack.h Mock HTTP stack.
+ * @file syslog_facade.h - Facade to syslog.h
  *
  * Project Clearwater - IMS in the Cloud
- * Copyright (C) 2013  Metaswitch Networks Ltd
+ * Copyright (C) 2014  Metaswitch Networks Ltd
  *
  * This program is free software: you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the
@@ -34,28 +34,40 @@
  * as those licenses appear in the file LICENSE-OPENSSL.
  */
 
-#ifndef MOCKDIAMETERSTACK_H__
-#define MOCKDIAMETERSTACK_H__
 
-#include "gmock/gmock.h"
-#include "diameterstack.h"
+#ifndef SYSLOG_FACADE_H__
+#define SYSLOG_FACADE_H__
 
-class MockDiameterStack : public Diameter::Stack
-{
-public:
-  MOCK_METHOD0(initialize, void());
-  MOCK_METHOD1(configure, void(const std::string&));
-  MOCK_METHOD1(advertize_application, void(const Diameter::Dictionary::Application&));
-  MOCK_METHOD3(register_handler, void(const Diameter::Dictionary::Application&, const Diameter::Dictionary::Message&, HandlerInterface*));
-  MOCK_METHOD1(register_fallback_handler, void(const Diameter::Dictionary::Application&));
-  MOCK_METHOD0(start, void());
-  MOCK_METHOD0(stop, void());
-  MOCK_METHOD0(wait_stopped, void());
-  MOCK_METHOD2(send, void(struct msg*, SAS::TrailId));
-  MOCK_METHOD2(send, void(struct msg*, Diameter::Transaction*));
-  MOCK_METHOD3(send, void(struct msg*, Diameter::Transaction*, unsigned int timeout_ms));
-  MOCK_METHOD1(add, bool(Diameter::Peer*));
-  MOCK_METHOD1(remove, void(Diameter::Peer*));
-};
+#include <features.h>
+#define __need___va_list
+#include <stdarg.h>
+
+// Facade to avoid name collision between syslog.h and log.h
+// Note that this is an extern "C" type file and is almost an exact duplicate of syslog.h
+
+extern void closelog (void);
+extern void openlog (__const char *__ident, int __option, int __facility);
+extern void syslog (int __pri, __const char *__fmt, ...)
+  __attribute__ ((__format__ (__printf__, 2, 3)));
+
+#define PDLOG_PID         0x01    /* log the pid with each message */
+
+#define PDLOG_EMERG       0       /* system is unusable */
+#define PDLOG_ALERT       1       /* action must be taken immediately */
+#define PDLOG_CRIT        2       /* critical conditions */
+#define PDLOG_ERR         3       /* error conditions */
+#define PDLOG_WARNING     4       /* warning conditions */
+#define PDLOG_NOTICE      5       /* normal but significant condition */
+#define PDLOG_INFO        6       /* informational */
+
+
+#define PDLOG_LOCAL0      (16<<3) /* reserved for local use */
+#define PDLOG_LOCAL1      (17<<3) /* reserved for local use */
+#define PDLOG_LOCAL2      (18<<3) /* reserved for local use */
+#define PDLOG_LOCAL3      (19<<3) /* reserved for local use */
+#define PDLOG_LOCAL4      (20<<3) /* reserved for local use */
+#define PDLOG_LOCAL5      (21<<3) /* reserved for local use */
+#define PDLOG_LOCAL6      (22<<3) /* reserved for local use */
+
 
 #endif
