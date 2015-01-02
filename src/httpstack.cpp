@@ -37,6 +37,7 @@
 #include "httpstack.h"
 #include <cstring>
 #include "log.h"
+#include "sascontext.h"
 
 HttpStack* HttpStack::INSTANCE = &DEFAULT_INSTANCE;
 HttpStack HttpStack::DEFAULT_INSTANCE;
@@ -239,6 +240,7 @@ void HttpStack::handler_callback(evhtp_request_t* req,
   request.set_sas_logger(handler->sas_logger(request));
 
   SAS::TrailId trail = SAS::new_trail(0);
+  SASContext::trail(trail);
   request.sas_log_rx_http_req(trail, 0);
 
   if (_stats != NULL)
@@ -274,6 +276,8 @@ void HttpStack::handler_callback(evhtp_request_t* req,
       _stats->incr_http_rejected_overload();
     }
   }
+
+  SASContext::trail(0L);
 }
 
 void* HttpStack::event_base_thread_fn(void* http_stack_ptr)

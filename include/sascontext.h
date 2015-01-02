@@ -43,10 +43,6 @@
 class SASContext
 {
 public:
-  SAS::TrailId get_trail() const { return _trail; };
-  void set_trail(const SAS::TrailId trail) { _trail = trail; };
-
-  static SASContext* get();
   static SAS::TrailId trail() { return get()->get_trail(); };
   static void trail(const SAS::TrailId trail) { get()->set_trail(trail); };
 
@@ -54,6 +50,10 @@ private:
   SASContext() : _trail(0) {}
   ~SASContext() {}
 
+  SAS::TrailId get_trail() const { return _trail; };
+  void set_trail(const SAS::TrailId trail) { _trail = trail; };
+
+  static SASContext* get();
   static void init_thread_local();
   static void destroy(void* context_ptr);
 

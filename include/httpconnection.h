@@ -246,13 +246,6 @@ private:
   static long calc_req_timeout_from_latency(int latency_us);
 
   boost::uuids::uuid get_random_uuid();
-  void sas_log_http_rsp(SAS::TrailId trail,
-                        CURL* curl,
-                        long http_rc,
-                        const std::string& method_str,
-                        const std::string& url,
-                        const std::string& doc,
-                        uint32_t instance_id=0);
 
   const std::string _server;
   const std::string _host;

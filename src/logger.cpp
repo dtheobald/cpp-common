@@ -223,20 +223,24 @@ void Logger::cycle_log_file(const timestamp_t& ts)
           ts.mday,
           ts.hour);
   _fd = fopen(fname, "a");
-
-  // Set up /var/log/<component>/<component>_current.txt as a symlink
-  char cfname[100];
-  sprintf(cfname, "%s_current.txt",
-          _prefix.c_str());
-  unlink(cfname);
-  symlink(fname, cfname);
-
   if (_fd == NULL)
   {
     // Failed to open logfile, so save errno until we can log it.
     // LCOV_EXCL_START Currently don't force fopen failures in UT
     _saved_errno = errno;
     // LCOV_EXCL_STOP
+  }
+
+  // Set up /var/log/<component>/<component>_current.txt as a symlink
+  char cfname[100];
+  sprintf(cfname, "%s_current.txt",
+          _prefix.c_str());
+  unlink(cfname);
+  int rc = symlink(fname, cfname);
+  if (rc != 0)
+  {
+    // Ignore the return code from symlink() - the symptoms are pretty minor and
+    // there's nothing we can do to recover.
   }
 }
 

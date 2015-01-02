@@ -37,6 +37,7 @@
 #include "diameterstack.h"
 #include "log.h"
 #include "sasevent.h"
+#include "sascontext.h"
 #include "cpp_common_pd_definitions.h"
 
 using namespace Diameter;
@@ -417,10 +418,13 @@ int Stack::request_callback_fn(struct msg** req,
   // A SAS trail has already been allocated in fd_sas_log_diameter_message. Get
   // it.
   SAS::TrailId trail = fd_hook_get_pmd(_sas_cb_data_hdl, *req)->trail;
+  SASContext::trail(trail);
   LOG_DEBUG("Invoke diameter request handler on trail %lu", trail);
 
   // Pass the request to the registered handler.
   handler->process_request(req, trail);
+
+  SASContext::trail(0L);
 
   // The handler will turn the message associated with the task into an answer which we wish to send to the HSS.
   // Setting the action to DISP_ACT_SEND ensures that we will send this answer on without going to any other callbacks.
