@@ -86,6 +86,9 @@ public:
     /// Return a string describing the source that the config was obtained from
     /// (e.g. the filename).
     virtual std::string source() = 0;
+
+    /// Virtual destructor.
+    virtual ~ConfigReader() {};
   };
 
   /// Virtual destructor.
