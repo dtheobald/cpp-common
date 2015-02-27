@@ -55,10 +55,20 @@ extern "C" {
 #include "sasevent.h"
 #include "communicationmonitor.h"
 
-/// @class MemcachedStore
-///
-/// A memcached-based implementation of the Store class.
-class MemcachedStore : public Store
+//
+// This file contains the definition of a memcached-based store. This is split
+// across two classes:
+// -  BaseMemcachedStore which contains the majority of the code.
+// -  MemcachedStore. This is the class that users of the store should
+//    create.
+//
+// MemcacheStore is separate class as this allows different constructors to be
+// defined which all delegate to the BaseMemcachedStore class. This is required
+// as BaseMemcachedStore contains constant memebers, and our version of GCC
+// does not support delegating to constructors in the same class.
+//
+
+class BaseMemcachedStore : public Store
 {
 public:
   /// Interface that the store uses to access its configuration.
@@ -78,11 +88,8 @@ public:
     virtual std::string source() = 0;
   };
 
-  MemcachedStore(bool binary,
-                 const std::string& config_file,
-                 CommunicationMonitor* comm_monitor = NULL,
-                 Alarm* vbucket_alarm = NULL);
-  ~MemcachedStore();
+  /// Virtual destructor.
+  virtual ~BaseMemcachedStore();
 
   /// Flags that the store should use a new view of the memcached cluster to
   /// distribute data.  Note that this is public because it is called from
@@ -117,6 +124,13 @@ public:
   void update_config();
 
 private:
+  /// Constructor. This is private to prevent this class from being instantiated
+  /// directly (use MemcachedStore instead).
+  BaseMemcachedStore(bool binary,
+                     ConfigReader* config_reader,
+                     CommunicationMonitor* comm_monitor,
+                     Alarm* vbucket_alarm);
+
   // A copy of this structure is maintained for each worker thread, as
   // thread local data.
   typedef struct connection
@@ -207,7 +221,7 @@ private:
                                                SAS::TrailId trail);
 
   // Stores a pointer to an updater object
-  Updater<void, MemcachedStore>* _updater;
+  Updater<void, BaseMemcachedStore>* _updater;
 
   // Used to store a connection structure for each worker thread.
   pthread_key_t _thread_local;
@@ -272,6 +286,24 @@ private:
   //
   // Atomic as it is set by the updater thread and read by application threads.
   std::atomic<int> _tombstone_lifetime;
+};
+
+
+/// @class MemcachedStore
+///
+/// A memcached-based implementation of the Store class.
+class MemcachedStore : public BaseMemcachedStore
+{
+public:
+  MemcachedStore(bool binary,
+                 const std::string& config_file,
+                 CommunicationMonitor* comm_monitor = NULL,
+                 Alarm* vbucket_alarm = NULL);
+
+  MemcachedStore(bool binary,
+                 ConfigReader* config_reader,
+                 CommunicationMonitor* comm_monitor = NULL,
+                 Alarm* vbucket_alarm = NULL);
 };
 
 #endif
