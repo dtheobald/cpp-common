@@ -61,6 +61,23 @@ extern "C" {
 class MemcachedStore : public Store
 {
 public:
+  /// Interface that the store uses to access its configuration.
+  class ConfigReader
+  {
+  public:
+    /// Read the memcached store config. Implementations of this method must be
+    /// idempotent.
+    ///
+    /// @param config - (out) The config
+    /// @return       - True if the config has been successfully read, false
+    ///                 otherwise.
+    virtual bool read(std::string& config) = 0;
+
+    /// Return a string describing the source that the config was obtained from
+    /// (e.g. the filename).
+    virtual std::string source() = 0;
+  };
+
   MemcachedStore(bool binary,
                  const std::string& config_file,
                  CommunicationMonitor* comm_monitor = NULL,
@@ -118,7 +135,26 @@ private:
 
   } connection;
 
-  std::string _config_file;
+  /// Class that obtains the memcached store config from a file.
+  class FileConfigReader : public ConfigReader
+  {
+  public:
+    /// Constructor
+    ///
+    /// @param filename - The name of the file to obtain the config from
+    ///                   (including the path).
+    FileConfigReader(const std::string& filename);
+
+    bool read(std::string& config);
+    std::string source();
+
+  private:
+    std::string _filename;
+  };
+
+  /// The object used to obtain the config. The store owns this an is
+  /// responsible for freeing it.
+  ConfigReader* _config_reader;
 
   /// Returns the vbucket for a specified key.
   int vbucket_for_key(const std::string& key);
@@ -178,12 +214,12 @@ private:
 
   // Stores the number of replicas configured for the store (one means the
   // data is stored on one server, two means it is stored on two servers etc.).
-  const int _replicas;
+  int _replicas;
 
   // Stores the number of vbuckets being used.  This currently doesn't change,
   // but in future we may choose to increase it when the cluster gets
   // sufficiently large.  Note that it _must_ be a power of two.
-  const int _vbuckets;
+  int _vbuckets;
 
   // The options string used to create appropriate memcached_st's for the
   // current view.

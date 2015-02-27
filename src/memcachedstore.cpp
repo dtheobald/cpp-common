@@ -64,6 +64,41 @@ static const int DEFAULT_TOMBSTONE_LIFETIME = 0;
 static const std::string TOMBSTONE = "";
 
 
+MemcachedStore::FileConfigReader::FileConfigReader(const std::string& filename) :
+  _filename(filename)
+{}
+
+bool MemcachedStore::FileConfigReader::read(std::string& config)
+{
+  std::ifstream input(_filename);
+  std::string line;
+  config.clear();
+
+  if (input.is_open())
+  {
+    LOG_DEBUG("Successfully opened config file '%s'", _filename.c_str());
+
+    // Read the file in a line at a time (to cope correctly with line endings).
+    while (getline(input, line))
+    {
+      config.append(line).push_back('\n');
+    }
+
+    LOG_DEBUG("Got config:\n%s", config.c_str());
+    return true;
+  }
+  else
+  {
+    LOG_ERROR("Failed to open config file '%s'", _filename.c_str());
+    return false;
+  }
+}
+
+std::string MemcachedStore::FileConfigReader::source()
+{
+  return _filename;
+}
+
 /// MemcachedStore constructor
 ///
 /// @param binary       Set to true to use binary memcached protocol, false to
@@ -74,7 +109,7 @@ MemcachedStore::MemcachedStore(bool binary,
                                const std::string& config_file,
                                CommunicationMonitor* comm_monitor,
                                Alarm* vbucket_alarm) :
-  _config_file(config_file),
+  _config_reader(new FileConfigReader(config_file)),
   _updater(NULL),
   _replicas(2),
   _vbuckets(128),
@@ -119,7 +154,8 @@ MemcachedStore::MemcachedStore(bool binary,
 MemcachedStore::~MemcachedStore()
 {
   // Destroy the updater (if it was created).
-  delete _updater;
+  delete _updater; _updater = NULL;
+  delete _config_reader; _config_reader = NULL;
 
   // Clean up this thread's connection now, rather than waiting for
   // pthread_exit.  This is to support use by single-threaded code
@@ -176,29 +212,33 @@ void MemcachedStore::new_view(const std::vector<std::string>& servers,
 void MemcachedStore::update_config()
 {
   // Read the memstore file.
-  std::ifstream f(_config_file);
+  std::string config;
   std::vector<std::string> servers;
   std::vector<std::string> new_servers;
   int tombstone_lifetime = DEFAULT_TOMBSTONE_LIFETIME;
 
-  if (f.is_open())
-  {
-    LOG_STATUS("Reloading memcached configuration from %s file", _config_file.c_str());
-    while (f.good())
-    {
-      std::string line;
-      getline(f, line);
+  std::string source = _config_reader->source();
 
-      if (line.length() > 0)
+  if (_config_reader->read(config))
+  {
+    std::vector<std::string> lines;
+    Utils::split_string(config, '\n', lines, 0, true);
+
+    LOG_STATUS("Reloading memcached configuration from %s", source.c_str());
+    for (std::vector<std::string>::const_iterator line = lines.begin();
+         line != lines.end();
+         ++line)
+    {
+      if (line->length() > 0)
       {
         // Read a non-blank line.
         std::vector<std::string> tokens;
-        Utils::split_string(line, '=', tokens, 0, true);
+        Utils::split_string(*line, '=', tokens, 0, true);
         if (tokens.size() != 2)
         {
-          LOG_ERROR("Malformed %s file (got bad line: '%s')",
-                    _config_file.c_str(),
-                    line.c_str());
+          LOG_ERROR("Malformed config from %s (got bad line: '%s')",
+                    source.c_str(),
+                    line->c_str());
           break;
         }
 
@@ -224,8 +264,8 @@ void MemcachedStore::update_config()
           if (std::to_string(tombstone_lifetime) != tokens[1])
           {
             LOG_ERROR("'%s' contained an invalid tombstone_lifetime line which will be ignored:\n%s",
-                      _config_file.c_str(),
-                      line.c_str());
+                      source.c_str(),
+                      line->c_str());
 
             // Set the lifetime back to the default.
             tombstone_lifetime = DEFAULT_TOMBSTONE_LIFETIME;
@@ -233,7 +273,6 @@ void MemcachedStore::update_config()
         }
       }
     }
-    f.close();
 
     if (servers.size() > 0)
     {
@@ -243,7 +282,7 @@ void MemcachedStore::update_config()
     else
     {
       LOG_ERROR("'%s' does not contain a valid set of servers - keeping previous settings",
-                _config_file.c_str());
+                source.c_str());
     }
 
     LOG_DEBUG("Setting tombstone lifetime to %ds", tombstone_lifetime);
@@ -251,7 +290,7 @@ void MemcachedStore::update_config()
   }
   else
   {
-    LOG_ERROR("Failed to open %s file", _config_file.c_str());
+    LOG_ERROR("Failed to open %s file", source.c_str());
   }
 }
 
