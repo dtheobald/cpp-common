@@ -82,6 +82,9 @@ namespace CassandraStore {
 class Operation;
 class Transaction;
 
+// Typedef for a mutation map.
+typedef std::map<std::string, std::map<std::string, std::vector<cass::Mutation> > > mutmap_t;
+
 /// Interface to the cassandra client that the store uses.  Making this an
 /// interface makes it easier to mock out the client in unit test.
 class ClientInterface
@@ -705,6 +708,15 @@ protected:
                     const std::string& start,
                     const std::string& finish,
                     const int64_t timestamp);
+
+  /// Build a mutation for a counter column.
+  ///
+  /// @param name           - The name of the counter column.
+  /// @param delta          - The change in the counter's value.
+  ///
+  /// @return               - The mutation object.
+  cass::Mutation build_counter_mutation(const std::string& name,
+                                        const int64_t delta);
 };
 
 /// Cassandra does not treat a non-existent row as a special case. If the user

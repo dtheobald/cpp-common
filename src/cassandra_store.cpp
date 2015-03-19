@@ -973,4 +973,22 @@ delete_slice(ClientInterface* client,
   client->batch_mutate(mutmap, ConsistencyLevel::ONE);
 }
 
+
+cass::Mutation Operation::build_counter_mutation(const std::string& name,
+                                                 const int64_t delta)
+{
+  cass::CounterColumn counter_column;
+  counter_column.__set_name(name);
+  counter_column.__set_value(delta);
+
+  cass::ColumnOrSuperColumn c_or_sc;
+  c_or_sc.__set_counter_column(counter_column);
+
+  cass::Mutation mut;
+  mut.__set_column_or_supercolumn(c_or_sc);
+
+  return mut;
+}
+
+
 } // namespace CassandraStore
