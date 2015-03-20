@@ -427,7 +427,7 @@ class Operation
 {
 public:
   /// Default constructor
-  Operaion();
+  Operation();
 
   /// Virtual destructor.
   virtual ~Operation() {};
