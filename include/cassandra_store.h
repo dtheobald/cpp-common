@@ -709,33 +709,17 @@ protected:
                     const std::string& finish,
                     const int64_t timestamp);
 
-  /// Build a mutation for a counter column.
+  /// Get the value of the specified column from a returned slice.
   ///
-  /// @param name           - The name of the counter column.
-  /// @param delta          - The change in the counter's value.
+  /// @param cols  - The slice to search.
+  /// @param name  - The name of the column to look for.
+  /// @param value - (out) The column's value. Only valid if this function
+  ///                returns true.
   ///
-  /// @return               - The mutation object.
-  cass::Mutation build_counter_mutation(const std::string& name,
-                                        const int64_t delta);
-};
-
-/// Cassandra does not treat a non-existent row as a special case. If the user
-/// gets a non-existent row thrift simply returns 0 columns.  This is almost
-/// never the desired behaviour, so the store converts such a result into a
-/// RowNotFoundException.
-///
-/// If an operation does not want to treat this an error, it should simply
-/// catch the exception.
-struct RowNotFoundException
-{
-  RowNotFoundException(const std::string& column_family, const std::string& key) :
-    column_family(column_family), key(key)
-  {};
-
-  virtual ~RowNotFoundException() {} ;
-
-  const std::string column_family;
-  const std::string key;
+  /// @return      - Whether the column was found.
+  bool find_column_value(std::vector<cass::ColumnOrSuperColumn> cols,
+                                    const std::string& name,
+                                    std::string& value);
 };
 
 }; // namespace CassandraStore

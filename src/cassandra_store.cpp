@@ -376,12 +376,6 @@ bool Store::do_sync(Operation* op, SAS::TrailId trail)
       cass_error_text = (boost::format("Exception: %s")
                          % nfe.what()).str();
     }
-    catch(RowNotFoundException& nre)
-    {
-      cass_result = NOT_FOUND;
-      cass_error_text = (boost::format("Row %s not present in column_family %s")
-                         % nre.key % nre.column_family).str();
-    }
     catch(...)
     {
       cass_result = UNKNOWN_ERROR;
@@ -840,12 +834,6 @@ issue_get_for_key(ClientInterface* client,
   cparent.column_family = column_family;
 
   client->get_slice(columns, key, cparent, predicate, consistency_level);
-
-  if (columns.size() == 0)
-  {
-    RowNotFoundException row_not_found_ex(column_family, key);
-    throw row_not_found_ex;
-  }
 }
 
 
@@ -861,12 +849,6 @@ issue_multiget_for_key(ClientInterface* client,
   cparent.column_family = column_family;
 
   client->multiget_slice(columns, keys, cparent, predicate, consistency_level);
-
-  if (columns.size() == 0)
-  {
-    RowNotFoundException row_not_found_ex(column_family, keys.front());
-    throw row_not_found_ex;
-  }
 }
 
 
@@ -974,20 +956,22 @@ delete_slice(ClientInterface* client,
 }
 
 
-cass::Mutation Operation::build_counter_mutation(const std::string& name,
-                                                 const int64_t delta)
+bool Operation::find_column_value(std::vector<cass::ColumnOrSuperColumn> cols,
+                                  const std::string& name,
+                                  std::string& value)
 {
-  cass::CounterColumn counter_column;
-  counter_column.__set_name(name);
-  counter_column.__set_value(delta);
+  for (std::vector<ColumnOrSuperColumn>::const_iterator it = cols.begin();
+       it != cols.end();
+       ++it)
+  {
+    if ((it->__isset.column) && (it->column.name == name))
+    {
+      value = it->column.value;
+      return true;
+    }
+  }
 
-  cass::ColumnOrSuperColumn c_or_sc;
-  c_or_sc.__set_counter_column(counter_column);
-
-  cass::Mutation mut;
-  mut.__set_column_or_supercolumn(c_or_sc);
-
-  return mut;
+  return false;
 }
 
 
