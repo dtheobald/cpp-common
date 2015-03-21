@@ -535,13 +535,13 @@ void Operation::unhandled_exception(ResultCode rc,
 }
 
 
-void Operation::
-put_columns(ClientInterface* client,
-            const std::string& column_family,
-            const std::vector<std::string>& keys,
-            const std::map<std::string, std::string>& columns,
-            int64_t timestamp,
-            int32_t ttl)
+void put_columns(ClientInterface* client,
+                 const std::string& column_family,
+                 const std::vector<std::string>& keys,
+                 const std::map<std::string, std::string>& columns,
+                 int64_t timestamp,
+                 int32_t ttl,
+                 cass::ConsistencyLevel::type consistency_level)
 {
   // Vector of mutations (one per column being modified).
   std::vector<Mutation> mutations;
@@ -587,15 +587,14 @@ put_columns(ClientInterface* client,
 
   // Execute the database operation.
   LOG_DEBUG("Executing put request operation");
-  client->batch_mutate(mutmap, ConsistencyLevel::ONE);
+  client->batch_mutate(mutmap, consistency_level);
 }
 
 
-void Operation::
-put_columns(ClientInterface* client,
-            const std::vector<RowColumns>& to_put,
-            int64_t timestamp,
-            int32_t ttl)
+void put_columns(ClientInterface* client,
+                 const std::vector<RowColumns>& to_put,
+                 int64_t timestamp,
+                 int32_t ttl)
 {
   // The mutation map is of the form {"key": {"column_family": [mutations] } }
   std::map<std::string, std::map<std::string, std::vector<Mutation> > > mutmap;
@@ -681,55 +680,50 @@ put_columns(ClientInterface* client,
         }
 
 
-void Operation::
-ha_get_columns(ClientInterface* client,
-               const std::string& column_family,
-               const std::string& key,
-               const std::vector<std::string>& names,
-               std::vector<ColumnOrSuperColumn>& columns)
+void ha_get_columns(ClientInterface* client,
+                    const std::string& column_family,
+                    const std::string& key,
+                    const std::vector<std::string>& names,
+                    std::vector<ColumnOrSuperColumn>& columns)
 {
   HA(get_columns, client, column_family, key, names, columns);
 }
 
 
-void Operation::
-ha_get_columns_with_prefix(ClientInterface* client,
-                           const std::string& column_family,
-                           const std::string& key,
-                           const std::string& prefix,
-                           std::vector<ColumnOrSuperColumn>& columns)
+void ha_get_columns_with_prefix(ClientInterface* client,
+                                const std::string& column_family,
+                                const std::string& key,
+                                const std::string& prefix,
+                                std::vector<ColumnOrSuperColumn>& columns)
 {
   HA(get_columns_with_prefix, client, column_family, key, prefix, columns);
 }
 
 
-void Operation::
-ha_multiget_columns_with_prefix(ClientInterface* client,
-                                const std::string& column_family,
-                                const std::vector<std::string>& keys,
-                                const std::string& prefix,
-                                std::map<std::string, std::vector<ColumnOrSuperColumn> >& columns)
+void ha_multiget_columns_with_prefix(ClientInterface* client,
+                                     const std::string& column_family,
+                                     const std::vector<std::string>& keys,
+                                     const std::string& prefix,
+                                     std::map<std::string, std::vector<ColumnOrSuperColumn> >& columns)
 {
   HA(multiget_columns_with_prefix, client, column_family, keys, prefix, columns);
 }
 
-void Operation::
-ha_get_all_columns(ClientInterface* client,
-                   const std::string& column_family,
-                   const std::string& key,
-                   std::vector<ColumnOrSuperColumn>& columns)
+void ha_get_all_columns(ClientInterface* client,
+                        const std::string& column_family,
+                        const std::string& key,
+                        std::vector<ColumnOrSuperColumn>& columns)
 {
   HA(get_row, client, column_family, key, columns);
 }
 
 
-void Operation::
-get_columns(ClientInterface* client,
-            const std::string& column_family,
-            const std::string& key,
-            const std::vector<std::string>& names,
-            std::vector<ColumnOrSuperColumn>& columns,
-            ConsistencyLevel::type consistency_level)
+void get_columns(ClientInterface* client,
+                 const std::string& column_family,
+                 const std::string& key,
+                 const std::vector<std::string>& names,
+                 std::vector<ColumnOrSuperColumn>& columns,
+                 ConsistencyLevel::type consistency_level)
 {
   // Get only the specified column names.
   SlicePredicate sp;
@@ -740,13 +734,12 @@ get_columns(ClientInterface* client,
 }
 
 
-void Operation::
-get_columns_with_prefix(ClientInterface* client,
-                        const std::string& column_family,
-                        const std::string& key,
-                        const std::string& prefix,
-                        std::vector<ColumnOrSuperColumn>& columns,
-                        ConsistencyLevel::type consistency_level)
+void get_columns_with_prefix(ClientInterface* client,
+                             const std::string& column_family,
+                             const std::string& key,
+                             const std::string& prefix,
+                             std::vector<ColumnOrSuperColumn>& columns,
+                             ConsistencyLevel::type consistency_level)
 {
   // This slice range gets all columns with the specified prefix.
   SliceRange sr;
@@ -772,13 +765,12 @@ get_columns_with_prefix(ClientInterface* client,
 }
 
 
-void Operation::
-multiget_columns_with_prefix(ClientInterface* client,
-                             const std::string& column_family,
-                             const std::vector<std::string>& keys,
-                             const std::string& prefix,
-                             std::map<std::string, std::vector<ColumnOrSuperColumn> >& columns,
-                             ConsistencyLevel::type consistency_level)
+void multiget_columns_with_prefix(ClientInterface* client,
+                                  const std::string& column_family,
+                                  const std::vector<std::string>& keys,
+                                  const std::string& prefix,
+                                  std::map<std::string, std::vector<ColumnOrSuperColumn> >& columns,
+                                  ConsistencyLevel::type consistency_level)
 {
   // This slice range gets all columns with the specified prefix.
   SliceRange sr;
@@ -809,12 +801,11 @@ multiget_columns_with_prefix(ClientInterface* client,
 }
 
 
-void Operation::
-get_row(ClientInterface* client,
-        const std::string& column_family,
-        const std::string& key,
-        std::vector<ColumnOrSuperColumn>& columns,
-        ConsistencyLevel::type consistency_level)
+void get_row(ClientInterface* client,
+             const std::string& column_family,
+             const std::string& key,
+             std::vector<ColumnOrSuperColumn>& columns,
+             ConsistencyLevel::type consistency_level)
 {
   // This slice range gets all columns in the row
   SliceRange sr;
@@ -830,13 +821,12 @@ get_row(ClientInterface* client,
 }
 
 
-void Operation::
-issue_get_for_key(ClientInterface* client,
-                  const std::string& column_family,
-                  const std::string& key,
-                  const SlicePredicate& predicate,
-                  std::vector<ColumnOrSuperColumn>& columns,
-                  ConsistencyLevel::type consistency_level)
+void issue_get_for_key(ClientInterface* client,
+                       const std::string& column_family,
+                       const std::string& key,
+                       const SlicePredicate& predicate,
+                       std::vector<ColumnOrSuperColumn>& columns,
+                       ConsistencyLevel::type consistency_level)
 {
   ColumnParent cparent;
   cparent.column_family = column_family;
@@ -851,13 +841,12 @@ issue_get_for_key(ClientInterface* client,
 }
 
 
-void Operation::
-issue_multiget_for_key(ClientInterface* client,
-                       const std::string& column_family,
-                       const std::vector<std::string>& keys,
-                       const SlicePredicate& predicate,
-                       std::map<std::string, std::vector<ColumnOrSuperColumn> >& columns,
-                       ConsistencyLevel::type consistency_level)
+void issue_multiget_for_key(ClientInterface* client,
+                            const std::string& column_family,
+                            const std::vector<std::string>& keys,
+                            const SlicePredicate& predicate,
+                            std::map<std::string, std::vector<ColumnOrSuperColumn> >& columns,
+                            ConsistencyLevel::type consistency_level)
 {
   ColumnParent cparent;
   cparent.column_family = column_family;
@@ -872,11 +861,10 @@ issue_multiget_for_key(ClientInterface* client,
 }
 
 
-void Operation::
-delete_row(ClientInterface* client,
-           const std::string& column_family,
-           const std::string& key,
-           int64_t timestamp)
+void delete_row(ClientInterface* client,
+                const std::string& column_family,
+                const std::string& key,
+                int64_t timestamp)
 {
   ColumnPath cp;
   cp.column_family = column_family;
@@ -886,10 +874,9 @@ delete_row(ClientInterface* client,
 }
 
 
-void Operation::
-delete_columns(ClientInterface* client,
-               const std::vector<RowColumns>& to_rm,
-               int64_t timestamp)
+void delete_columns(ClientInterface* client,
+                    const std::vector<RowColumns>& to_rm,
+                    int64_t timestamp)
 {
   // The mutation map is of the form {"key": {"column_family": [mutations] } }
   std::map<std::string, std::map<std::string, std::vector<Mutation> > > mutmap;
@@ -944,13 +931,12 @@ delete_columns(ClientInterface* client,
   }
 }
 
-void Operation::
-delete_slice(ClientInterface* client,
-             const std::string& column_family,
-             const std::string& key,
-             const std::string& start,
-             const std::string& finish,
-             const int64_t timestamp)
+void delete_slice(ClientInterface* client,
+                  const std::string& column_family,
+                  const std::string& key,
+                  const std::string& start,
+                  const std::string& finish,
+                  const int64_t timestamp)
 {
   // The mutation map is of the form {"key": {"column_family": [mutations] } }
   std::map<std::string, std::map<std::string, std::vector<Mutation> > > mutmap;
@@ -976,9 +962,9 @@ delete_slice(ClientInterface* client,
 }
 
 
-bool Operation::find_column_value(std::vector<cass::ColumnOrSuperColumn> cols,
-                                  const std::string& name,
-                                  std::string& value)
+bool find_column_value(std::vector<cass::ColumnOrSuperColumn> cols,
+                       const std::string& name,
+                       std::string& value)
 {
   for (std::vector<ColumnOrSuperColumn>::const_iterator it = cols.begin();
        it != cols.end();

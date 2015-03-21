@@ -477,247 +477,6 @@ protected:
   /// If the operation hit an exception doing a cassandra operation, the error
   /// text describing the exception.
   std::string _cass_error_text;
-
-  //
-  // Utility methods for interacting with cassandra. These abstract away the
-  // thrift interface and make it easier to deal with.
-  //
-  // High-availability Gets
-  // ----------------------
-  //
-  // After growing a cluster, Cassandra does not pro-actively populate the
-  // new nodes with their data (the nodes are expected to use `nodetool
-  // repair` if they need to get their data).  Combining this with
-  // the fact that we generally use consistency ONE when reading data, the
-  // behaviour on new nodes is to return NotFoundException or empty result
-  // sets to queries, even though the other nodes have a copy of the data.
-  //
-  // To resolve this issue, we define ha_ versions of various get methods.
-  // These attempt a QUORUM read in the event that a ONE read returns
-  // no data.  If the QUORUM read fails due to unreachable nodes, the
-  // original result will be used.
-  //
-  // To implement this, the non-HA versions must take the consistency level as
-  // their last parameter.
-  //
-
-  /// HA get an entire row.
-  ///
-  /// @param client         - The client used to communicate with cassandra.
-  /// @param column_family  - The column family to operate on.
-  /// @param key            - Row key.
-  /// @param columns        - (out) Columns in the row.
-  void ha_get_row(ClientInterface* client,
-                  const std::string& column_family,
-                  const std::string& key,
-                  std::vector<cass::ColumnOrSuperColumn>& columns);
-
-  /// HA get specific columns in a row.
-  ///
-  /// Note that if a requested row does not exist in cassandra, this method
-  /// will return only the rows that do exist. It will not throw an exception
-  /// in this case.
-  ///
-  /// @param client         - The client used to communicate with cassandra.
-  /// @param column_family  - The column family to operate on.
-  /// @param key            - Row key
-  /// @param names          - The names of the columns to retrieve
-  /// @param columns        - (out) The retrieved columns
-  void ha_get_columns(ClientInterface* client,
-                      const std::string& column_family,
-                      const std::string& key,
-                      const std::vector<std::string>& names,
-                      std::vector<cass::ColumnOrSuperColumn>& columns);
-
-  /// HA get all columns in a row
-  /// This is useful when working with dynamic columns.
-  ///
-  /// @param client         - The client used to communicate with cassandra.
-  /// @param column_family  - The column family to operate on.
-  /// @param key            - Row key
-  /// @param columns        - (out) The retrieved columns.
-  void ha_get_all_columns(ClientInterface* client,
-                          const std::string& column_family,
-                          const std::string& key,
-                          std::vector<cass::ColumnOrSuperColumn>& columns);
-
-  /// HA get all columns in a row that have a particular prefix to their name.
-  /// This is useful when working with dynamic columns.
-  ///
-  /// @param client         - The client used to communicate with cassandra.
-  /// @param column_family  - The column family to operate on.
-  /// @param key            - Row key
-  /// @param prefix         - The prefix
-  /// @param columns        - (out) the retrieved columns. NOTE: the column
-  ///                         names have their prefix removed.
-  void ha_get_columns_with_prefix(ClientInterface* client,
-                                  const std::string& column_family,
-                                  const std::string& key,
-                                  const std::string& prefix,
-                                  std::vector<cass::ColumnOrSuperColumn>& columns);
-
-  /// HA get all columns in multiple rows that have a particular prefix to their
-  /// name.  This is useful when working with dynamic columns.
-  ///
-  /// @param client         - The client used to communicate with cassandra.
-  /// @param column_family  - The column family to operate on.
-  /// @param key            - Row key
-  /// @param prefix         - The prefix
-  /// @param columns        - (out) the retrieved columns.  Returned as a map
-  ///                         where the keys are the requested row keys and
-  ///                         each value is a vector of columns. NOTE: the
-  ///                         column names have their prefix removed.
-  void ha_multiget_columns_with_prefix(ClientInterface* client,
-                                       const std::string& column_family,
-                                       const std::vector<std::string>& keys,
-                                       const std::string& prefix,
-                                       std::map<std::string, std::vector<cass::ColumnOrSuperColumn> >& columns);
-
-  /// Get an entire row (non-HA).
-  /// @param consistency_level cassandra consistency level.
-  void get_row(ClientInterface* client,
-               const std::string& column_family,
-               const std::string& key,
-               std::vector<cass::ColumnOrSuperColumn>& columns,
-               cass::ConsistencyLevel::type consistency_level);
-
-  /// Get specific columns in a row (non-HA).
-  /// @param consistency_level cassandra consistency level.
-  void get_columns(ClientInterface* client,
-                   const std::string& column_family,
-                   const std::string& key,
-                   const std::vector<std::string>& names,
-                   std::vector<cass::ColumnOrSuperColumn>& columns,
-                   cass::ConsistencyLevel::type consistency_level);
-
-  /// Get columns whose names begin with the specified prefix. (non-HA).
-  ///
-  /// @param consistency_level cassandra consistency level.
-  void get_columns_with_prefix(ClientInterface* client,
-                               const std::string& column_family,
-                               const std::string& key,
-                               const std::string& prefix,
-                               std::vector<cass::ColumnOrSuperColumn>& columns,
-                               cass::ConsistencyLevel::type consistency_level);
-
-  /// Get all columns in multiple rows that have a particular prefix to their
-  /// name.
-  ///
-  /// @param consistency_level cassandra consistency level.
-  void multiget_columns_with_prefix(ClientInterface* client,
-                                    const std::string& column_family,
-                                    const std::vector<std::string>& key,
-                                    const std::string& prefix,
-                                    std::map<std::string, std::vector<cass::ColumnOrSuperColumn> >& columns,
-                                    cass::ConsistencyLevel::type consistency_level);
-
-  /// Utility method to issue a get request for a particular key.
-  ///
-  /// @param client            - The client used to communicate with cassandra.
-  /// @param column_family     - The column family to operate on.
-  /// @param key               - Row key
-  /// @param predicate         - Slice predicate specifying what columns to get.
-  /// @param columns           - (out) The retrieved columns.
-  /// @param consistency_level - Cassandra consistency level.
-  void issue_get_for_key(ClientInterface* client,
-                         const std::string& column_family,
-                         const std::string& key,
-                         const cass::SlicePredicate& predicate,
-                         std::vector<cass::ColumnOrSuperColumn>& columns,
-                         cass::ConsistencyLevel::type consistency_level);
-
-  /// Utility method to issue a get request for multiple keys.
-  ///
-  /// @param client            - The client used to communicate with cassandra.
-  /// @param column_family     - The column family to operate on.
-  /// @param keys              - Row keys
-  /// @param predicate         - Slice predicate specifying what columns to get.
-  /// @param columns           - (out) The retrieved columns. Returned as a map
-  ///                            of row keys => vectors of columns.
-  /// @param consistency_level - Cassandra consistency level.
-  void issue_multiget_for_key(ClientInterface* client,
-                              const std::string& column_family,
-                              const std::vector<std::string>& keys,
-                              const cass::SlicePredicate& predicate,
-                              std::map<std::string, std::vector<cass::ColumnOrSuperColumn> >& columns,
-                              cass::ConsistencyLevel::type consistency_level);
-
-  /// Write columns to a row/rows. If multiple rows are specified the same
-  /// columns are written to all rows.
-  ///
-  /// @param client         - The client used to communicate with cassandra.
-  /// @param column_family  - The column family to operate on.
-  /// @param key            - Row key
-  /// @param columns        - The columns to write. Specified as a map
-  ///                         {name => value}
-  /// @param timestamp      - The timestamp to write the columns with.
-  /// @param ttl            - The TTL to write the columns with.
-  void put_columns(ClientInterface* client,
-                   const std::string& column_family,
-                   const std::vector<std::string>& keys,
-                   const std::map<std::string, std::string>& columns,
-                   int64_t timestamp,
-                   int32_t ttl);
-
-  /// Write columns to the database.  This allows for complex writing of
-  /// different columns to different column families and/or keys.
-  ///
-  /// @param client         - The client used to communicate with cassandra.
-  /// @param columns        - A vector where each entry describes the columns
-  ///                         to put to a particular row.
-  /// @param timestamp      - The timestamp to write the columns with.
-  /// @param ttl            - The TTL to write the columns with.
-  void put_columns(ClientInterface* client,
-                   const std::vector<RowColumns>& columns,
-                   int64_t timestamp,
-                   int32_t ttl);
-
-  /// Delete a row from the database.
-  ///
-  /// @param client         - The client used to communicate with cassandra.
-  /// @param column_family  - The column family to operate on.
-  /// @param key            - Row key
-  /// @param timestamp      - The timestamp to put on the deletion operation.
-  void delete_row(ClientInterface* client,
-                  const std::string& column_family,
-                  const std::string& key,
-                  int64_t timestamp);
-
-  /// Delete an arbitrary selection of columns from the database.
-  ///
-  /// @param client         - The client used to communicate with cassandra.
-  /// @param columns        - A vector where each entry describes the columns
-  ///                         to put to a particular row.
-  /// @param timestamp      - The timestamp to put on the deletion operation.
-  void delete_columns(ClientInterface* client,
-                      const std::vector<RowColumns>& columns,
-                      int64_t timestamp);
-
-  /// Delete a slice of columns from a row where the slice is from start
-  /// (inclusive) to end (exclusive).
-  ///
-  /// @param client         - The client used to communicate with cassandra.
-  /// @param column_family  - The column family to operate on.
-  /// @param key            - Row key
-  /// @param start          - The start of the range.
-  /// @param finish         - The end of the range.
-  /// @param timestamp      - The timestamp to put on the deletion operation.
-  void delete_slice(ClientInterface* client,
-                    const std::string& column_family,
-                    const std::string& key,
-                    const std::string& start,
-                    const std::string& finish,
-                    const int64_t timestamp);
-
-  /// @param cols  - The slice to search.
-  /// @param name  - The name of the column to look for.
-  /// @param value - (out) The column's value. Only valid if this function
-  ///                returns true.
-  ///
-  /// @return      - Whether the column was found.
-  bool find_column_value(std::vector<cass::ColumnOrSuperColumn> cols,
-                         const std::string& name,
-                         std::string& value);
 };
 
 /// Cassandra does not treat a non-existent row as a special case. If the user
@@ -738,6 +497,249 @@ struct RowNotFoundException
   const std::string column_family;
   const std::string key;
 };
+
+//
+// Utility methods for interacting with cassandra. These abstract away the
+// thrift interface and make it easier to deal with.
+//
+// High-availability Gets
+// ----------------------
+//
+// After growing a cluster, Cassandra does not pro-actively populate the
+// new nodes with their data (the nodes are expected to use `nodetool
+// repair` if they need to get their data).  Combining this with
+// the fact that we generally use consistency ONE when reading data, the
+// behaviour on new nodes is to return NotFoundException or empty result
+// sets to queries, even though the other nodes have a copy of the data.
+//
+// To resolve this issue, we define ha_ versions of various get methods.
+// These attempt a QUORUM read in the event that a ONE read returns
+// no data.  If the QUORUM read fails due to unreachable nodes, the
+// original result will be used.
+//
+// To implement this, the non-HA versions must take the consistency level as
+// their last parameter.
+//
+
+/// HA get an entire row.
+///
+/// @param client         - The client used to communicate with cassandra.
+/// @param column_family  - The column family to operate on.
+/// @param key            - Row key.
+/// @param columns        - (out) Columns in the row.
+void ha_get_row(ClientInterface* client,
+                const std::string& column_family,
+                const std::string& key,
+                std::vector<cass::ColumnOrSuperColumn>& columns);
+
+/// HA get specific columns in a row.
+///
+/// Note that if a requested row does not exist in cassandra, this method
+/// will return only the rows that do exist. It will not throw an exception
+/// in this case.
+///
+/// @param client         - The client used to communicate with cassandra.
+/// @param column_family  - The column family to operate on.
+/// @param key            - Row key
+/// @param names          - The names of the columns to retrieve
+/// @param columns        - (out) The retrieved columns
+void ha_get_columns(ClientInterface* client,
+                    const std::string& column_family,
+                    const std::string& key,
+                    const std::vector<std::string>& names,
+                    std::vector<cass::ColumnOrSuperColumn>& columns);
+
+/// HA get all columns in a row
+/// This is useful when working with dynamic columns.
+///
+/// @param client         - The client used to communicate with cassandra.
+/// @param column_family  - The column family to operate on.
+/// @param key            - Row key
+/// @param columns        - (out) The retrieved columns.
+void ha_get_all_columns(ClientInterface* client,
+                        const std::string& column_family,
+                        const std::string& key,
+                        std::vector<cass::ColumnOrSuperColumn>& columns);
+
+/// HA get all columns in a row that have a particular prefix to their name.
+/// This is useful when working with dynamic columns.
+///
+/// @param client         - The client used to communicate with cassandra.
+/// @param column_family  - The column family to operate on.
+/// @param key            - Row key
+/// @param prefix         - The prefix
+/// @param columns        - (out) the retrieved columns. NOTE: the column
+///                         names have their prefix removed.
+void ha_get_columns_with_prefix(ClientInterface* client,
+                                const std::string& column_family,
+                                const std::string& key,
+                                const std::string& prefix,
+                                std::vector<cass::ColumnOrSuperColumn>& columns);
+
+/// HA get all columns in multiple rows that have a particular prefix to their
+/// name.  This is useful when working with dynamic columns.
+///
+/// @param client         - The client used to communicate with cassandra.
+/// @param column_family  - The column family to operate on.
+/// @param key            - Row key
+/// @param prefix         - The prefix
+/// @param columns        - (out) the retrieved columns.  Returned as a map
+///                         where the keys are the requested row keys and
+///                         each value is a vector of columns. NOTE: the
+///                         column names have their prefix removed.
+void ha_multiget_columns_with_prefix(ClientInterface* client,
+                                     const std::string& column_family,
+                                     const std::vector<std::string>& keys,
+                                     const std::string& prefix,
+                                     std::map<std::string, std::vector<cass::ColumnOrSuperColumn> >& columns);
+
+/// Get an entire row (non-HA).
+/// @param consistency_level cassandra consistency level.
+void get_row(ClientInterface* client,
+             const std::string& column_family,
+             const std::string& key,
+             std::vector<cass::ColumnOrSuperColumn>& columns,
+             cass::ConsistencyLevel::type consistency_level);
+
+/// Get specific columns in a row (non-HA).
+/// @param consistency_level cassandra consistency level.
+void get_columns(ClientInterface* client,
+                 const std::string& column_family,
+                 const std::string& key,
+                 const std::vector<std::string>& names,
+                 std::vector<cass::ColumnOrSuperColumn>& columns,
+                 cass::ConsistencyLevel::type consistency_level);
+
+/// Get columns whose names begin with the specified prefix. (non-HA).
+///
+/// @param consistency_level cassandra consistency level.
+void get_columns_with_prefix(ClientInterface* client,
+                             const std::string& column_family,
+                             const std::string& key,
+                             const std::string& prefix,
+                             std::vector<cass::ColumnOrSuperColumn>& columns,
+                             cass::ConsistencyLevel::type consistency_level);
+
+/// Get all columns in multiple rows that have a particular prefix to their
+/// name.
+///
+/// @param consistency_level cassandra consistency level.
+void multiget_columns_with_prefix(ClientInterface* client,
+                                  const std::string& column_family,
+                                  const std::vector<std::string>& key,
+                                  const std::string& prefix,
+                                  std::map<std::string, std::vector<cass::ColumnOrSuperColumn> >& columns,
+                                  cass::ConsistencyLevel::type consistency_level);
+
+/// Utility method to issue a get request for a particular key.
+///
+/// @param client            - The client used to communicate with cassandra.
+/// @param column_family     - The column family to operate on.
+/// @param key               - Row key
+/// @param predicate         - Slice predicate specifying what columns to get.
+/// @param columns           - (out) The retrieved columns.
+/// @param consistency_level - Cassandra consistency level.
+void issue_get_for_key(ClientInterface* client,
+                       const std::string& column_family,
+                       const std::string& key,
+                       const cass::SlicePredicate& predicate,
+                       std::vector<cass::ColumnOrSuperColumn>& columns,
+                       cass::ConsistencyLevel::type consistency_level);
+
+/// Utility method to issue a get request for multiple keys.
+///
+/// @param client            - The client used to communicate with cassandra.
+/// @param column_family     - The column family to operate on.
+/// @param keys              - Row keys
+/// @param predicate         - Slice predicate specifying what columns to get.
+/// @param columns           - (out) The retrieved columns. Returned as a map
+///                            of row keys => vectors of columns.
+/// @param consistency_level - Cassandra consistency level.
+void issue_multiget_for_key(ClientInterface* client,
+                            const std::string& column_family,
+                            const std::vector<std::string>& keys,
+                            const cass::SlicePredicate& predicate,
+                            std::map<std::string, std::vector<cass::ColumnOrSuperColumn> >& columns,
+                            cass::ConsistencyLevel::type consistency_level);
+
+/// Write columns to a row/rows. If multiple rows are specified the same
+/// columns are written to all rows.
+///
+/// @param client         - The client used to communicate with cassandra.
+/// @param column_family  - The column family to operate on.
+/// @param key            - Row key
+/// @param columns        - The columns to write. Specified as a map
+///                         {name => value}
+/// @param timestamp      - The timestamp to write the columns with.
+/// @param ttl            - The TTL to write the columns with.
+/// @param consistency_level - Cassandra consistency level.
+void put_columns(ClientInterface* client,
+                 const std::string& column_family,
+                 const std::vector<std::string>& keys,
+                 const std::map<std::string, std::string>& columns,
+                 int64_t timestamp,
+                 int32_t ttl,
+                 cass::ConsistencyLevel::type consistency_level = cass::ConsistencyLevel::ONE);
+
+/// Write columns to the database.  This allows for complex writing of
+/// different columns to different column families and/or keys.
+///
+/// @param client         - The client used to communicate with cassandra.
+/// @param columns        - A vector where each entry describes the columns
+///                         to put to a particular row.
+/// @param timestamp      - The timestamp to write the columns with.
+/// @param ttl            - The TTL to write the columns with.
+void put_columns(ClientInterface* client,
+                 const std::vector<RowColumns>& columns,
+                 int64_t timestamp,
+                 int32_t ttl);
+
+/// Delete a row from the database.
+///
+/// @param client         - The client used to communicate with cassandra.
+/// @param column_family  - The column family to operate on.
+/// @param key            - Row key
+/// @param timestamp      - The timestamp to put on the deletion operation.
+void delete_row(ClientInterface* client,
+                const std::string& column_family,
+                const std::string& key,
+                int64_t timestamp);
+
+/// Delete an arbitrary selection of columns from the database.
+///
+/// @param client         - The client used to communicate with cassandra.
+/// @param columns        - A vector where each entry describes the columns
+///                         to put to a particular row.
+/// @param timestamp      - The timestamp to put on the deletion operation.
+void delete_columns(ClientInterface* client,
+                    const std::vector<RowColumns>& columns,
+                    int64_t timestamp);
+
+/// Delete a slice of columns from a row where the slice is from start
+/// (inclusive) to end (exclusive).
+///
+/// @param client         - The client used to communicate with cassandra.
+/// @param column_family  - The column family to operate on.
+/// @param key            - Row key
+/// @param start          - The start of the range.
+/// @param finish         - The end of the range.
+/// @param timestamp      - The timestamp to put on the deletion operation.
+void delete_slice(ClientInterface* client,
+                  const std::string& column_family,
+                  const std::string& key,
+                  const std::string& start,
+                  const std::string& finish,
+                  const int64_t timestamp);
+
+/// @param cols  - The slice to search.
+/// @param name  - The name of the column to look for.
+/// @param value - (out) The column's value. Only valid if this function
+///                returns true.
+///
+/// @return      - Whether the column was found.
+bool find_column_value(std::vector<cass::ColumnOrSuperColumn> cols,
+                       const std::string& name,
+                       std::string& value);
 
 }; // namespace CassandraStore
 
