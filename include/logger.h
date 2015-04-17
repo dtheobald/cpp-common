@@ -65,6 +65,8 @@ public:
   // called when no other threads are running - generally from a signal
   // handler.
   virtual void backtrace(const char* data);
+  
+  void cycle_stderr_log_file();
 
 private:
   /// Encodes the time as needed by the logger.
@@ -83,6 +85,7 @@ private:
   void get_timestamp(timestamp_t& ts);
   void write_log_file(const char* data, const timestamp_t& ts);
   void cycle_log_file(const timestamp_t& ts);
+  void cycle_stderr_log_file(const timestamp_t& ts);
 
   // Two methods to use with pthread_cleanup_push to release the lock if the logging thread is
   // forcibly killed.

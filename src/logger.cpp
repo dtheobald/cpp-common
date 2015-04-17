@@ -208,6 +208,33 @@ void Logger::write_log_file(const char *data, const timestamp_t& ts)
 }
 
 
+void Logger::cycle_stderr_log_file()
+{
+  timestamp_t ts;
+  get_timestamp(ts);
+  cycle_stderr_log_file(ts);
+}
+
+void Logger::cycle_stderr_log_file(const timestamp_t& ts)
+{
+  char stdout_fname[100];
+  char stderr_fname[100];
+  sprintf(stderr_fname, "%s_stderr_%4.4d%2.2d%2.2dT%2.2d0000Z.txt",
+          _prefix.c_str(),
+          (ts.year + 1900),
+          (ts.mon + 1),
+          ts.mday,
+          ts.hour);
+  sprintf(stdout_fname, "%s_stdout_%4.4d%2.2d%2.2dT%2.2d0000Z.txt",
+          _prefix.c_str(),
+          (ts.year + 1900),
+          (ts.mon + 1),
+          ts.mday,
+          ts.hour);
+  stdout = freopen(stdout_fname, "a", stdout);
+  stderr = freopen(stderr_fname, "a", stderr);
+}
+
 void Logger::cycle_log_file(const timestamp_t& ts)
 {
   if (_fd != NULL)
