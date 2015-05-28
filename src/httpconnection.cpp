@@ -442,11 +442,11 @@ HTTPCode HttpConnection::send_get(const std::string& path,
 }
 
 /// Get data; return a HTTP return code
-HTTPCode HttpConnection::send_get(const std::string& path,                     
-                                  std::map<std::string, std::string>& headers, 
-                                  std::string& response,                       
-                                  const std::string& username,                 
-                                  SAS::TrailId trail)                          
+HTTPCode HttpConnection::send_get(const std::string& path,
+                                  std::map<std::string, std::string>& headers,
+                                  std::string& response,
+                                  const std::string& username,
+                                  SAS::TrailId trail)
 {
   std::vector<std::string> unused_req_headers;
   return HttpConnection::send_get(path, headers, response, username, unused_req_headers, trail);
@@ -619,6 +619,15 @@ HTTPCode HttpConnection::send_request(const std::string& path,                 /
     if (rc == CURLE_OK)
     {
       curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_rc);
+
+      // Remove any 100 Continue line from the response as this will not be SAS
+      // logged by Clearwater HTTP servers.
+      if (recorder.response.find("HTTP/1.1 100") == 0)
+      {
+        size_t crlf_offset = recorder.response.find("\r\n");
+        recorder.response.erase(0, crlf_offset + 2);
+      }
+
       sas_log_http_rsp(trail, curl, http_rc, method_str, url, recorder.response, 0);
       LOG_DEBUG("Received HTTP response: status=%d, doc=%s", http_rc, doc.c_str());
     }
@@ -1072,8 +1081,8 @@ int HttpConnection::port_from_server(const std::string& server)
   return port;
 }
 
-// Changes the underlying server used by this connection. Use this when 
-// the HTTPConnection was created without a server (e.g. 
+// Changes the underlying server used by this connection. Use this when
+// the HTTPConnection was created without a server (e.g.
 // ChronosInternalConnection)
 void HttpConnection::change_server(std::string override_server)
 {
