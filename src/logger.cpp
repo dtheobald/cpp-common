@@ -77,6 +77,8 @@ Logger::Logger(const std::string& directory, const std::string& filename) :
 {
   pthread_mutex_init(&_lock, NULL);
   _prefix = directory + "/" + filename;
+  _directory = directory;
+  _filename = filename;
 }
 
 
@@ -223,17 +225,23 @@ void Logger::cycle_log_file(const timestamp_t& ts)
           ts.hour);
   _fd = fopen(fname, "a");
 
+  sprintf(fname, "%s_%4.4d%2.2d%2.2dT%2.2d0000Z.txt",
+          _filename.c_str(),
+          (ts.year + 1900),
+          (ts.mon + 1),
+          ts.mday,
+          ts.hour);
+
   // Set up /var/log/<component>/<component>_current.txt as a symlink
   // If this fails, there's not much we can do, it's not like we can drop
   // a log.
   char cfname[100];
   sprintf(cfname, "%s_current.txt",
-          _prefix.c_str());
-  unlink(cfname);
-  if (symlink(fname, cfname) < 0)
-  {
-    // We don't get a helpful symlink.
-  }
+          _filename.c_str());
+
+  char ln_cmd[256];
+  sprintf(ln_cmd, "cd %s; rm -f %s; ln -s %s %s", _directory.c_str(), cfname, fname, cfname);
+  system(ln_cmd);
 
   if (_fd == NULL)
   {

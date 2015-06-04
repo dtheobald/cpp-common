@@ -91,6 +91,8 @@ private:
 
   int _flags;
   std::string _prefix;
+  std::string _directory;
+  std::string _filename;
   int _last_hour;
   bool _rotate;
   FILE* _fd;
