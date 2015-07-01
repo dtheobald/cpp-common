@@ -49,6 +49,16 @@
 #define LOG_BACKTRACE(...) Log::backtrace(__VA_ARGS__)
 #define LOG_COMMIT(...) Log::commit()
 
+#define TRC_ERROR     LOG_ERROR
+#define TRC_WARNING   LOG_WARNING
+#define TRC_STATUS    LOG_STATUS
+#define TRC_INFO      LOG_INFO
+#define TRC_VERBOSE   LOG_VERBOSE
+#define TRC_DEBUG     LOG_ERROR
+#define TRC_BACKTRACE LOG_ERROR
+#define TRC_COMMIT    LOG_COMMIT
+
+
 namespace Log
 {
   const int ERROR_LEVEL = 0;
