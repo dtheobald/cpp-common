@@ -1,5 +1,5 @@
 /**
- * @file snmp_agent.h Initialization and termination functions for Sprout SNMP.
+ * @file snmp_c_linkage.cpp Wrapper functions for C linkage
  *
  * Project Clearwater - IMS in the Cloud
  * Copyright (C) 2015 Metaswitch Networks Ltd
@@ -34,20 +34,22 @@
  * as those licenses appear in the file LICENSE-OPENSSL.
  */
 
-#ifndef CW_SNMP_AGENT_H
-#define CW_SNMP_AGENT_H
+#include "snmp_c_linkage.h"
+#include "snmp_counter_table.h"
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-  // Starts the SNMP agent thread. 'name' is passed through to the netsnmp library as the application
-  // name - this is arbitrary, but should be spomething sensible (e.g. 'sprout', 'bono').
-  int snmp_setup(const char* name);
-
-  // Terminates the SNMP agent thread. 'name' should match the string passed to snmp_setup.
-  void snmp_terminate(const char* name);
-#ifdef __cplusplus
+void* create_counter_table(const char* name, const char* oid)
+{
+  return (void*)(SNMP::CounterTable::create(name, oid));
 }
-#endif
 
-#endif
+void delete_counter_table(void* table)
+{
+  SNMP::CounterTable* real_table = (SNMP::CounterTable*)table;
+  delete real_table;
+}
+
+void increment_counter_table(void* table)
+{
+  SNMP::CounterTable* real_table = (SNMP::CounterTable*)table;
+  real_table->increment();
+}
