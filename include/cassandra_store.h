@@ -499,7 +499,8 @@ protected:
   void ha_get_row(ClientInterface* client,
                   const std::string& column_family,
                   const std::string& key,
-                  std::vector<cass::ColumnOrSuperColumn>& columns);
+                  std::vector<cass::ColumnOrSuperColumn>& columns,
+                  SAS::TrailId trail);
 
   /// HA get specific columns in a row.
   ///
@@ -516,7 +517,8 @@ protected:
                       const std::string& column_family,
                       const std::string& key,
                       const std::vector<std::string>& names,
-                      std::vector<cass::ColumnOrSuperColumn>& columns);
+                      std::vector<cass::ColumnOrSuperColumn>& columns,
+                      SAS::TrailId trail);
 
   /// HA get all columns in a row
   /// This is useful when working with dynamic columns.
@@ -528,7 +530,8 @@ protected:
   void ha_get_all_columns(ClientInterface* client,
                           const std::string& column_family,
                           const std::string& key,
-                          std::vector<cass::ColumnOrSuperColumn>& columns);
+                          std::vector<cass::ColumnOrSuperColumn>& columns,
+                          SAS::TrailId trail);
 
   /// HA get all columns in a row that have a particular prefix to their name.
   /// This is useful when working with dynamic columns.
@@ -543,7 +546,8 @@ protected:
                                   const std::string& column_family,
                                   const std::string& key,
                                   const std::string& prefix,
-                                  std::vector<cass::ColumnOrSuperColumn>& columns);
+                                  std::vector<cass::ColumnOrSuperColumn>& columns,
+                                  SAS::TrailId trail);
 
   /// HA get all columns in multiple rows that have a particular prefix to their
   /// name.  This is useful when working with dynamic columns.
@@ -560,7 +564,8 @@ protected:
                                        const std::string& column_family,
                                        const std::vector<std::string>& keys,
                                        const std::string& prefix,
-                                       std::map<std::string, std::vector<cass::ColumnOrSuperColumn> >& columns);
+                                       std::map<std::string, std::vector<cass::ColumnOrSuperColumn> >& columns,
+                                       SAS::TrailId trail);
 
   /// Get an entire row (non-HA).
   /// @param consistency_level cassandra consistency level.
