@@ -40,6 +40,7 @@
 
 #include "cassandra_store.h"
 #include "sasevent.h"
+#include "sas.h"
 
 using namespace apache::thrift;
 using namespace apache::thrift::transport;
@@ -635,6 +636,14 @@ put_columns(ClientInterface* client,
   client->batch_mutate(mutmap, ConsistencyLevel::ONE);
 }
 
+// A map from quorum consistency levels to their corresponding SAS enum value.
+// Any changes made to this must be consistently applied to the sas resource
+// bundle.
+std::map<cass::ConsistencyLevel::type, uint32_t> quorum_consistency_map =
+  {
+    {cass::ConsistencyLevel::LOCAL_QUORUM, 0},
+    {cass::ConsistencyLevel::QUORUM,       1},
+  };
 
 // Macro to turn an underlying (non-HA) get method into an HA one.
 //
@@ -664,22 +673,31 @@ put_columns(ClientInterface* client,
 //    unexpected, so the risk that we might return out of date data is
 //    acceptable.
 //
-#define HA(METHOD, ...)                                                      \
+#define HA(METHOD, TRAIL_ID, ...)                                            \
         try                                                                  \
         {                                                                    \
           METHOD(__VA_ARGS__, ConsistencyLevel::LOCAL_QUORUM);               \
         }                                                                    \
-        catch(UnavailableException)                                          \
+        catch(UnavailableException& ue)                                      \
         {                                                                    \
-          // SASLOG "LOCAL_QUORUM didn't work"                               \
-                                                                             \
+          /* SASLOG "LOCAL_QUORUM didn't work" */                            \
+          int event_id = SASEvent::QUORUM_FAILURE;                           \
+          SAS::Event event(TRAIL_ID, event_id, 0);                           \
+          event.add_static_param(                                            \
+              quorum_consistency_map[cass::ConsistencyLevel::LOCAL_QUORUM]); \
+          SAS::report_event(event);                                          \
           try                                                                \
           {                                                                  \
             METHOD(__VA_ARGS__, ConsistencyLevel::QUORUM);                   \
           }                                                                  \
-          catch(UnavailableException)                                        \
+          catch(UnavailableException& ue)                                    \
           {                                                                  \
-            // SASLOG "QUORUM didn't work either"                            \
+            /* SASLOG "QUORUM didn't work either" */                         \
+            int event_id = SASEvent::QUORUM_FAILURE;                         \
+            SAS::Event event(TRAIL_ID, event_id, 0);                         \
+            event.add_static_param(                                          \
+              quorum_consistency_map[cass::ConsistencyLevel::QUORUM]);       \
+            SAS::report_event(event);                                        \
             METHOD(__VA_ARGS__, ConsistencyLevel::ONE);                      \
           }                                                                  \
         }
@@ -689,9 +707,10 @@ ha_get_columns(ClientInterface* client,
                const std::string& column_family,
                const std::string& key,
                const std::vector<std::string>& names,
-               std::vector<ColumnOrSuperColumn>& columns)
+               std::vector<ColumnOrSuperColumn>& columns,
+               SAS::TrailId trail)
 {
-  HA(get_columns, client, column_family, key, names, columns);
+  HA(get_columns, trail, client, column_family, key, names, columns);
 }
 
 
@@ -700,9 +719,10 @@ ha_get_columns_with_prefix(ClientInterface* client,
                            const std::string& column_family,
                            const std::string& key,
                            const std::string& prefix,
-                           std::vector<ColumnOrSuperColumn>& columns)
+                           std::vector<ColumnOrSuperColumn>& columns,
+                           SAS::TrailId trail)
 {
-  HA(get_columns_with_prefix, client, column_family, key, prefix, columns);
+  HA(get_columns_with_prefix, trail, client, column_family, key, prefix, columns);
 }
 
 
@@ -711,18 +731,20 @@ ha_multiget_columns_with_prefix(ClientInterface* client,
                                 const std::string& column_family,
                                 const std::vector<std::string>& keys,
                                 const std::string& prefix,
-                                std::map<std::string, std::vector<ColumnOrSuperColumn> >& columns)
+                                std::map<std::string, std::vector<ColumnOrSuperColumn> >& columns,
+                                SAS::TrailId trail)
 {
-  HA(multiget_columns_with_prefix, client, column_family, keys, prefix, columns);
+  HA(multiget_columns_with_prefix, trail, client, column_family, keys, prefix, columns);
 }
 
 void Operation::
 ha_get_all_columns(ClientInterface* client,
                    const std::string& column_family,
                    const std::string& key,
-                   std::vector<ColumnOrSuperColumn>& columns)
+                   std::vector<ColumnOrSuperColumn>& columns,
+                   SAS::TrailId trail)
 {
-  HA(get_row, client, column_family, key, columns);
+  HA(get_row, trail, client, column_family, key, columns);
 }
 
 
