@@ -43,6 +43,7 @@
 #include <atomic>
 
 #include "alarm.h"
+#include "pdlog.h"
 
 /// @class CommunicationMonitor
 ///
@@ -65,6 +66,8 @@ class CommunicationMonitor
 {
 public:
   CommunicationMonitor(BaseAlarm* alarm,
+                       PDLog clear_log,
+                       PDLog raise_log,
                        unsigned int clear_confirm_sec = 30,
                        unsigned int set_confirm_sec = 15);
 
@@ -86,6 +89,9 @@ private:
 
   unsigned int _clear_confirm_ms;
   unsigned int _set_confirm_ms;
+
+  PDLog _clear_log;
+  PDLog _raise_log;
 
   std::atomic<int> _succeeded;
   std::atomic<int> _failed;

@@ -144,4 +144,49 @@ static const PDLog3<const char*, const char*, int> CL_HTTP_PROTOCOL_ERR
   "Check for logs on the specified server to see why it rejected the request."
 );
 
+static const PDLog CL_CM_CASSANDRA_CONNECTION_LOST
+(
+  PDLogBase::CL_CPP_COMMON_ID + 9,
+  PDLOG_ERR,
+  "The connection to the local Cassandra has been lost.",
+  "The connection to the local Cassandra has been lost. The node will periodically "
+  "attempt to reconnect.",
+  "This node won't be able to read from or write to Cassandra until Cassandra "
+  "connectivity is restored.",
+  "(1). Check that Cassandra is running on the node."
+  "(2). Check that the configuration files in /etc/clearwater and /etc/cassandra are correct."
+);
+
+static const PDLog CL_CM_CASSANDRA_CONNECTION_RECOVERED
+(
+  PDLogBase::CL_CPP_COMMON_ID + 10,
+  PDLOG_NOTICE,
+  "Cassandra communication error cleared.",
+  "Communication to the local Cassandra has been restored.",
+  "Normal.",
+  "None."
+);
+
+static const PDLog CL_CM_MEMCACHED_CONNECTION_LOST
+(
+  PDLogBase::CL_CPP_COMMON_ID + 11,
+  PDLOG_ERR,
+  "The connection to Memcached has been lost.",
+  "The connection to Memcached has been lost. The node will periodically "
+  "attempt to reconnect.",
+  "This node won't be able to read from or write to Memcached until Memcached "
+  "connectivity is restored.",
+  "(1). Check that Memcached is running on the node."
+  "(2). Check that the configuration files in /etc/clearwater/ are correct."
+);
+
+static const PDLog CL_CM_MEMCACHED_CONNECTION_RECOVERED
+(
+  PDLogBase::CL_CPP_COMMON_ID + 12,
+  PDLOG_NOTICE,
+  "Memcached communication error cleared.",
+  "Communication to at least one Memcached process has been restored.",
+  "Normal.",
+  "None."
+);
 #endif

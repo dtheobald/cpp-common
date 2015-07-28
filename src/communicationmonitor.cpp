@@ -38,12 +38,17 @@
 #include "log.h"
 
 CommunicationMonitor::CommunicationMonitor(BaseAlarm* alarm,
+                                           PDLog clear_log,
+                                           PDLog raise_log,
                                            unsigned int clear_confirm_sec,
                                            unsigned int set_confirm_sec) :
   _alarm(alarm),
   _clear_confirm_ms(clear_confirm_sec * 1000),
   _set_confirm_ms(set_confirm_sec * 1000),
-  _succeeded(0), _failed(0)
+  _clear_log(clear_log),
+  _raise_log(raise_log),
+  _succeeded(0),
+  _failed(0)
 {
   _next_check = current_time_ms() + _set_confirm_ms;
 
@@ -108,6 +113,7 @@ void CommunicationMonitor::update_alarm_state(unsigned long now_ms)
         {
           TRC_STATUS("Setting alarm %d", _alarm->index());
           _alarm->set();
+          _raise_log.log();
         }
       }
       else
@@ -121,6 +127,7 @@ void CommunicationMonitor::update_alarm_state(unsigned long now_ms)
         {
           TRC_STATUS("Clearing alarm %d", _alarm->index());
           _alarm->clear();
+          _clear_log.log();
         }
       }
 
