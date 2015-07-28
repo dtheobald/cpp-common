@@ -496,6 +496,7 @@ protected:
   /// @param column_family  - The column family to operate on.
   /// @param key            - Row key.
   /// @param columns        - (out) Columns in the row.
+  /// @param trail          - SAS trail ID
   void ha_get_row(ClientInterface* client,
                   const std::string& column_family,
                   const std::string& key,
@@ -513,6 +514,7 @@ protected:
   /// @param key            - Row key
   /// @param names          - The names of the columns to retrieve
   /// @param columns        - (out) The retrieved columns
+  /// @param trail          - SAS trail ID
   void ha_get_columns(ClientInterface* client,
                       const std::string& column_family,
                       const std::string& key,
@@ -527,6 +529,7 @@ protected:
   /// @param column_family  - The column family to operate on.
   /// @param key            - Row key
   /// @param columns        - (out) The retrieved columns.
+  /// @param trail          - SAS trail ID
   void ha_get_all_columns(ClientInterface* client,
                           const std::string& column_family,
                           const std::string& key,
@@ -542,6 +545,7 @@ protected:
   /// @param prefix         - The prefix
   /// @param columns        - (out) the retrieved columns. NOTE: the column
   ///                         names have their prefix removed.
+  /// @param trail          - SAS trail ID
   void ha_get_columns_with_prefix(ClientInterface* client,
                                   const std::string& column_family,
                                   const std::string& key,
@@ -560,6 +564,7 @@ protected:
   ///                         where the keys are the requested row keys and
   ///                         each value is a vector of columns. NOTE: the
   ///                         column names have their prefix removed.
+  /// @param trail          - SAS trail ID
   void ha_multiget_columns_with_prefix(ClientInterface* client,
                                        const std::string& column_family,
                                        const std::vector<std::string>& keys,
