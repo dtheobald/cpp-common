@@ -496,10 +496,12 @@ protected:
   /// @param column_family  - The column family to operate on.
   /// @param key            - Row key.
   /// @param columns        - (out) Columns in the row.
+  /// @param trail          - SAS trail ID
   void ha_get_row(ClientInterface* client,
                   const std::string& column_family,
                   const std::string& key,
-                  std::vector<cass::ColumnOrSuperColumn>& columns);
+                  std::vector<cass::ColumnOrSuperColumn>& columns,
+                  SAS::TrailId trail);
 
   /// HA get specific columns in a row.
   ///
@@ -512,11 +514,13 @@ protected:
   /// @param key            - Row key
   /// @param names          - The names of the columns to retrieve
   /// @param columns        - (out) The retrieved columns
+  /// @param trail          - SAS trail ID
   void ha_get_columns(ClientInterface* client,
                       const std::string& column_family,
                       const std::string& key,
                       const std::vector<std::string>& names,
-                      std::vector<cass::ColumnOrSuperColumn>& columns);
+                      std::vector<cass::ColumnOrSuperColumn>& columns,
+                      SAS::TrailId trail);
 
   /// HA get all columns in a row
   /// This is useful when working with dynamic columns.
@@ -525,10 +529,12 @@ protected:
   /// @param column_family  - The column family to operate on.
   /// @param key            - Row key
   /// @param columns        - (out) The retrieved columns.
+  /// @param trail          - SAS trail ID
   void ha_get_all_columns(ClientInterface* client,
                           const std::string& column_family,
                           const std::string& key,
-                          std::vector<cass::ColumnOrSuperColumn>& columns);
+                          std::vector<cass::ColumnOrSuperColumn>& columns,
+                          SAS::TrailId trail);
 
   /// HA get all columns in a row that have a particular prefix to their name.
   /// This is useful when working with dynamic columns.
@@ -539,11 +545,13 @@ protected:
   /// @param prefix         - The prefix
   /// @param columns        - (out) the retrieved columns. NOTE: the column
   ///                         names have their prefix removed.
+  /// @param trail          - SAS trail ID
   void ha_get_columns_with_prefix(ClientInterface* client,
                                   const std::string& column_family,
                                   const std::string& key,
                                   const std::string& prefix,
-                                  std::vector<cass::ColumnOrSuperColumn>& columns);
+                                  std::vector<cass::ColumnOrSuperColumn>& columns,
+                                  SAS::TrailId trail);
 
   /// HA get all columns in multiple rows that have a particular prefix to their
   /// name.  This is useful when working with dynamic columns.
@@ -556,11 +564,13 @@ protected:
   ///                         where the keys are the requested row keys and
   ///                         each value is a vector of columns. NOTE: the
   ///                         column names have their prefix removed.
+  /// @param trail          - SAS trail ID
   void ha_multiget_columns_with_prefix(ClientInterface* client,
                                        const std::string& column_family,
                                        const std::vector<std::string>& keys,
                                        const std::string& prefix,
-                                       std::map<std::string, std::vector<cass::ColumnOrSuperColumn> >& columns);
+                                       std::map<std::string, std::vector<cass::ColumnOrSuperColumn> >& columns,
+                                       SAS::TrailId trail);
 
   /// Get an entire row (non-HA).
   /// @param consistency_level cassandra consistency level.

@@ -42,7 +42,7 @@
 
 namespace SASEvent {
 
-  const std::string CURRENT_RESOURCE_BUNDLE = "org.projectclearwater.20150624";
+  const std::string CURRENT_RESOURCE_BUNDLE = "org.projectclearwater.20150727";
 
   // Name of the HTTP header we use to correlate the client and server in SAS.
   const std::string HTTP_BRANCH_HEADER_NAME = "X-SAS-HTTP-Branch-ID";
@@ -127,6 +127,8 @@ namespace SASEvent {
   const int BASERESOLVE_A_RESULT = COMMON_BASE + 0x000201;
 
   const int CASS_CONNECT_FAIL = COMMON_BASE + 0x0300;
+
+  const int QUORUM_FAILURE = COMMON_BASE + 0x0400;
 
 } // namespace SASEvent
 
