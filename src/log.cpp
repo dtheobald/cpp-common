@@ -45,6 +45,18 @@
 const char* log_level[] = {"Error", "Warning", "Status", "Info", "Verbose", "Debug"};
 
 #define MAX_LOGLINE 8192
+#define RAM_BUFSIZE (1024 * 1024)
+
+typedef struct
+{
+  pthread_t   thread;
+  int         line_number;
+  const char *module;
+  const char *fmt;
+  int         num_params;
+  va_arg      params[1];
+
+} TRC_RAMBUF_ENTRY;
 
 namespace Log
 {
@@ -52,6 +64,117 @@ namespace Log
   static Logger *logger = &logger_static;
   static pthread_mutex_t serialization_lock = PTHREAD_MUTEX_INITIALIZER;
   int loggingLevel = 4;
+
+  // RAM buffer and associated static parameters.  The RAM buffer consists of
+  // an area of memory (of arbitrary size) to which structures of type
+  // TRC_RAMBUF_ENTRY are written (these structures being of variable size
+  // depending on the number of arguments represented by the entry).  Note
+  // that the buffer is deliberately unioned with a TRC_RAMBUF_ENTRY to ensure
+  // that it is correctly aligned.
+  //
+  // ram_next_slot points to the next available slot in the buffer (which might
+  // or might not be big enough for the next record to be written - if not, the
+  // buffer is wrapped when that next record is written).
+  //
+  // ram_head_slot points to the oldest TRC_RAMUF_ENTRY structure in the buffer.
+  //
+  // Special care needs to be taken when wrapping (i.e. when the next record to
+  // be written won't fit in the buffer).  We need to make sure that any
+  // existing valid log data at the end of the buffer that we're having to skip
+  // over gets blatted to zero so that the dump tool doesn't regard the
+  // skipped bit as containing valid log data and spuriously dump rubbish.  As
+  // module cannot be validly NULL, just checking whether this field is NULL
+  // is enough to tell the dumper that its reached the end of the buffer
+  // and needs to wrap back to the start.
+  static union
+  {
+    char buf[RAM_BUFSIZE];
+    TRC_RAMBUF_ENTRY align;
+  } ram_buffer = 0;
+  static pthread_mutex_t ram_lock = PTHREAD_MUTEX_INITIALIZER;
+  static TRC_RAMBUF_ENTRY* ram_next_slot = &ram_buffer.align;
+  static TRC_RAMBUF_ENTRY* ram_head_slot = NULL;
+}
+
+// Fast RAM buffer write routine
+void LOG::ramTrace(const char *module, int line_number, int num_params, char *fmt, ...)
+{
+  va_list args;
+  va_start(args, fmt);
+
+  // Lock access to the RAM buffer
+
+  pthread_mutex_lock(&Log::ram_lock);
+
+  int entry_size = RAM_SIZE(num_params);
+
+  // Find space in the buffer to write our log entry into
+  if (((char *)Log::ram_next_slot + entry_size) > (ram_buffer.buf + RAM_BUFSIZE))
+  {
+    // The log isn't going to fit at the end of the buffer, so we need to wrap it.
+    // Set any remaining space in the buffer to zero (so that it can't be accidentally
+    // interpreted as good data).
+    memset((char *)Log::ram_next_slot, 0, RAM_BUFSIZE - ((char *)Log::ram_next_slot - ram_buffer.buf));
+
+    // Check whether the head slot is in the space we have just destroyed (in which case this
+    // needs to be reset to the start of the buffer).
+    if (Log::ram_head_slot >= Log::ram_next_slot)
+    {
+      Log::ram_head_slot = &Log::ram_buffer.align;
+    }
+
+    // Point the next slot at the head of the buffer
+    Log::ram_next_slot = &Log::ram_buffer.align;
+  }
+
+  // If we have an oldest log in the buffer (i.e., a "head" entry), bump this
+  // along if we're about to overwrite it
+  while ((Log::ram_head_slot != NULL) && ((char *)Log::ram_next_slot + entry_size) > RAM_ENTRY_SIZE(Log::ram_head_slot))
+  {
+    Log::ram_head_slot = (char *)Log::ram_head_slot + RAM_ENTRY_SIZE(Log::ram_head_slot);
+
+    if ((((char *)Log::ram_head_slot + sizeof(TRC_RAMBUF_ENTRY)) > (ram_buffer.buf + RAM_BUFSIZE)) ||
+        (Log::ram_head_slot->module == NULL))
+    {
+      // Head slot no longer points to a valid thread entry.  Wrap it and stop looking
+      Log::ram_head_slot = &Log::ram_buffer.align;
+      break;
+    }
+  }
+
+  // We now have a slot we can write our log entry into and a head entry
+  // which we are not about to overwrite.
+
+  // Save off a pointer to the slot and bump the next_slot pointer past it.
+  // Note that it doesn't matter if there isn't enough space in the buffer to
+  // write here - the next logging thread will spot this and wrap it
+  // automatically.
+  TRC_RAMBUF_ENTRY *this_slot = Log::ram_next_slot;
+  Log::ram_next_slot = (char *)Log::ram_next_slot + entry_size;
+
+  // If we haven't got a "head" entry yet, this is it
+  if (Log::ram_head_slot == NULL)
+  {
+    Log::ram_head_slot = this_slot;
+  }
+
+  // Fill in the fields in the slot
+  this_slot->thread = pthread_self();
+  this_slot->module = module;
+  this_slot->line_number = line_number;
+  this_slot->fmt = fmt;
+  this_slot->num_params = num_params;
+
+  for (int i = 0; i < num_args; i++)
+  {
+    this_slot->params[i] =
+  }
+
+
+  // Release the mutex so that other threads can get in
+  pthread_mutex_unlock(&Log::ram_lock);
+
+  va_end(args);
 }
 
 void Log::setLoggingLevel(int level)

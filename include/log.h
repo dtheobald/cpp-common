@@ -40,12 +40,18 @@
 
 #include "logger.h"
 
-#define TRC_ERROR(...) if (Log::enabled(Log::ERROR_LEVEL)) Log::write(Log::ERROR_LEVEL, __FILE__, __LINE__, __VA_ARGS__)
-#define TRC_WARNING(...) if (Log::enabled(Log::WARNING_LEVEL)) Log::write(Log::WARNING_LEVEL, __FILE__, __LINE__, __VA_ARGS__)
-#define TRC_STATUS(...) if (Log::enabled(Log::STATUS_LEVEL)) Log::write(Log::STATUS_LEVEL, __FILE__, __LINE__, __VA_ARGS__)
-#define TRC_INFO(...) if (Log::enabled(Log::INFO_LEVEL)) Log::write(Log::INFO_LEVEL, __FILE__, __LINE__, __VA_ARGS__)
-#define TRC_VERBOSE(...) if (Log::enabled(Log::VERBOSE_LEVEL)) Log::write(Log::VERBOSE_LEVEL, __FILE__, __LINE__, __VA_ARGS__)
-#define TRC_DEBUG(...) if (Log::enabled(Log::DEBUG_LEVEL)) Log::write(Log::DEBUG_LEVEL, __FILE__, __LINE__, __VA_ARGS__)
+// The following macro returns the number of parameters in a trace statement
+// (the minus 1 reflects the fact that the first argument in a trace
+// statement is the format string, so the number of parameters is one less than
+// this)
+#define TRC_NUMPARAMS(...)  ((sizeof((int[]){__VA_ARGS__})/sizeof(int)) - 1)
+
+#define TRC_ERROR(...) Log::ramTrace(__FILE__,__LINE__,TRC_NUMPARAMS(__VA_ARGS__),__VA_ARGS__); if (Log::enabled(Log::ERROR_LEVEL)) Log::write(Log::ERROR_LEVEL, __FILE__, __LINE__, __VA_ARGS__)
+#define TRC_WARNING(...) Log::ramTrace(__FILE__,__LINE__,TRC_NUMPARAMS(__VA_ARGS__),__VA_ARGS__); if (Log::enabled(Log::WARNING_LEVEL)) Log::write(Log::WARNING_LEVEL, __FILE__, __LINE__, __VA_ARGS__)
+#define TRC_STATUS(...) Log::ramTrace(__FILE__,__LINE__,TRC_NUMPARAMS(__VA_ARGS__),__VA_ARGS__); if (Log::enabled(Log::STATUS_LEVEL)) Log::write(Log::STATUS_LEVEL, __FILE__, __LINE__, __VA_ARGS__)
+#define TRC_INFO(...) Log::ramTrace(__FILE__,__LINE__,TRC_NUMPARAMS(__VA_ARGS__),__VA_ARGS__); if (Log::enabled(Log::INFO_LEVEL)) Log::write(Log::INFO_LEVEL, __FILE__, __LINE__, __VA_ARGS__)
+#define TRC_VERBOSE(...) Log::ramTrace(__FILE__,__LINE__,TRC_NUMPARAMS(__VA_ARGS__),__VA_ARGS__); if (Log::enabled(Log::VERBOSE_LEVEL)) Log::write(Log::VERBOSE_LEVEL, __FILE__, __LINE__, __VA_ARGS__)
+#define TRC_DEBUG(...) Log::ramTrace(__FILE__,__LINE__,TRC_NUMPARAMS(__VA_ARGS__),__VA_ARGS__); if (Log::enabled(Log::DEBUG_LEVEL)) Log::write(Log::DEBUG_LEVEL, __FILE__, __LINE__, __VA_ARGS__)
 #define TRC_BACKTRACE(...) Log::backtrace(__VA_ARGS__)
 #define TRC_COMMIT(...) Log::commit()
 
