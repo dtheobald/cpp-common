@@ -40,18 +40,36 @@
 
 #include "logger.h"
 
-// The following macro returns the number of parameters in a trace statement
-// (the minus 1 reflects the fact that the first argument in a trace
-// statement is the format string, so the number of parameters is one less than
-// this)
-#define TRC_NUMPARAMS(...)  ((sizeof((int[]){__VA_ARGS__})/sizeof(int)) - 1)
+pthread_mutex_t trc_ram_trc_cache_lock = PTHREAD_MUTEX_INITIALIZER;
 
-#define LOG_ERROR(...) Log::ramTrace(__FILE__,__LINE__,TRC_NUMPARAMS(__VA_ARGS__),__VA_ARGS__); if (Log::enabled(Log::ERROR_LEVEL)) Log::write(Log::ERROR_LEVEL, __FILE__, __LINE__, __VA_ARGS__)
-#define LOG_WARNING(...) Log::ramTrace(__FILE__,__LINE__,TRC_NUMPARAMS(__VA_ARGS__),__VA_ARGS__); if (Log::enabled(Log::WARNING_LEVEL)) Log::write(Log::WARNING_LEVEL, __FILE__, __LINE__, __VA_ARGS__)
-#define LOG_STATUS(...) Log::ramTrace(__FILE__,__LINE__,TRC_NUMPARAMS(__VA_ARGS__),__VA_ARGS__); if (Log::enabled(Log::STATUS_LEVEL)) Log::write(Log::STATUS_LEVEL, __FILE__, __LINE__, __VA_ARGS__)
-#define LOG_INFO(...) Log::ramTrace(__FILE__,__LINE__,TRC_NUMPARAMS(__VA_ARGS__),__VA_ARGS__); if (Log::enabled(Log::INFO_LEVEL)) Log::write(Log::INFO_LEVEL, __FILE__, __LINE__, __VA_ARGS__)
-#define LOG_VERBOSE(...) Log::ramTrace(__FILE__,__LINE__,TRC_NUMPARAMS(__VA_ARGS__),__VA_ARGS__); if (Log::enabled(Log::VERBOSE_LEVEL)) Log::write(Log::VERBOSE_LEVEL, __FILE__, __LINE__, __VA_ARGS__)
-#define LOG_DEBUG(...) Log::ramTrace(__FILE__,__LINE__,TRC_NUMPARAMS(__VA_ARGS__),__VA_ARGS__); if (Log::enabled(Log::DEBUG_LEVEL)) Log::write(Log::DEBUG_LEVEL, __FILE__, __LINE__, __VA_ARGS__)
+#define TRC_RAMTRACE(...)
+{
+  static int trc_id = 0;
+
+  pthread_mutex_lock(&trc_ram_trc_cache_lock);
+
+  if (log_id == 0)
+  {
+    // Fetch an id which will be unique to this trace call and cache the trace
+    // format string and parameter types
+    trc_id = Log::ramCacheTrcCall(__FILE__,__LINE__,__VA_ARGS__);
+  }
+
+  // Release the lock on the trace call cache
+  pthread_mutex_unlock(&trc_ram_trc_cache_lock);
+
+  // At this point, we have a valid trace id corresponding to this TRC_ line
+  // in the code.  Pass this to the route that stores this particular trace
+  // instance in the RAM buffer
+  Log::ramTrace(trc_id,__VA_ARGS__);
+}
+
+#define LOG_ERROR(...) TRC_RAMTRACE(__VA_ARGS__) if (Log::enabled(Log::ERROR_LEVEL)) Log::write(Log::ERROR_LEVEL, __FILE__, __LINE__, __VA_ARGS__)
+#define LOG_WARNING(...) TRC_RAMTRACE(__VA_ARGS__) if (Log::enabled(Log::WARNING_LEVEL)) Log::write(Log::WARNING_LEVEL, __FILE__, __LINE__, __VA_ARGS__)
+#define LOG_STATUS(...) TRC_RAMTRACE(__VA_ARGS__) if (Log::enabled(Log::STATUS_LEVEL)) Log::write(Log::STATUS_LEVEL, __FILE__, __LINE__, __VA_ARGS__)
+#define LOG_INFO(...) TRC_RAMTRACE(__VA_ARGS__) if (Log::enabled(Log::INFO_LEVEL)) Log::write(Log::INFO_LEVEL, __FILE__, __LINE__, __VA_ARGS__)
+#define LOG_VERBOSE(...) TRC_RAMTRACE(__VA_ARGS__) if (Log::enabled(Log::VERBOSE_LEVEL)) Log::write(Log::VERBOSE_LEVEL, __FILE__, __LINE__, __VA_ARGS__)
+#define LOG_DEBUG(...) TRC_RAMTRACE(__VA_ARGS__) if (Log::enabled(Log::DEBUG_LEVEL)) Log::write(Log::DEBUG_LEVEL, __FILE__, __LINE__, __VA_ARGS__)
 #define LOG_BACKTRACE(...) Log::backtrace(__VA_ARGS__)
 #define LOG_COMMIT(...) Log::commit()
 
