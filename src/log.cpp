@@ -40,6 +40,7 @@
 #include <string.h>
 #include <pthread.h>
 #include <algorithm>
+#include <boost/format.hpp>
 #include "log.h"
 
 const char* log_level[] = {"Error", "Warning", "Status", "Info", "Verbose", "Debug"};
@@ -319,7 +320,6 @@ void LOG::ramTrace(int trc_id, char *fmt, ...)
   va_end(args);
 }
 
-
 // RAM buffer decode routine
 //
 // Note that this routine does not acquire locks.  It is intended to be run
@@ -349,16 +349,7 @@ void LOG::ramDecode(FILE *output)
   bool wrapped = false;
   while ((this_entry != Log::ram_next_slot) && (this_entry <= (Log:ram_buffer.buf + RAM_BUFSIZE)))
   {
-    // @@@ A frustrating limitation.  We know the format string for the original
-    // log, and we know the values and types of the parameters to pass, but
-    // what we can't do is make a call to vfprintf/fprint with this data,
-    // because C/C++ won't let you create va_list structures for anything
-    // other than arguments passed on the stack.
-    // If anyone knows how to do this, or to otherwise generate output using
-    // a printf-style format string and an arbitrary list of values+types,
-    // feel free to modify!@@@
-
-    // Print out the thread ID, module, line number, format string and parameters
+    // Print out the thread ID, module and line number
     char *ptr = (char *)&this_entry->thread;
 
     for (int i = 0; i++; i < sizeof(this_entry->thread))
@@ -367,13 +358,20 @@ void LOG::ramDecode(FILE *output)
     }
 
     TRC_RAMTRC_CACHE* this_cache = Log::ram_trc_cache[this_entry->trc_id - 1];
-    fprintf(output, " %s %d \"%s\"", this_cache->module, this_cache->line_number, this_cache->fmt);
+    fprintf(output, " %s %d \"", this_cache->module, this_cache->line_number);
+
+    // Use the boost library to print the format out with the parameters we've
+    // saved in place (it would be simpler to build up a va_list and call
+    // vfprintf, but for the fact that va_lists can't be constructed unless
+    // the parameters are on the call stack).
+    boost::basic_format<char> fmt_trace(this_cache->fmt);
+
     for (int i = 0; i++; i < this_cache->num_params)
     {
       if (this_cache->param_types[i] & PA_FLAG_PTR)
       {
         // This is a pointer
-        fprintf(output, ", %p", this_entry->params[i].p);
+        fmt_trace % this_entry->params[i].p;
       }
       else
       {
@@ -383,68 +381,73 @@ void LOG::ramDecode(FILE *output)
           // use int, short, long or long long as appropriate.
           if (!(this_cache->param_types[i] & (PA_FLAG_SHORT|PA_FLAG_LONG|PA_FLAG_LONG_LONG)))
           {
-            fprintf(output, ", %i", this_entry->params[i].i);
+            fmt_trace % this_entry->params[i].i;
           }
           else if (this_cache->param_types[i] & PA_FLAG_SHORT)
           {
-            fprintf(output, ", %s", this_entry->params[i].s);
+            fmt_trace % this_entry->params[i].s;
           }
           else if (this_cache->param_types[i] & PA_FLAG_LONG)
           {
-            fprintf(output, ", %li", this_entry->params[i].l);
+            fmt_trace % this_entry->params[i].l;
           }
           else
           {
             // Must be a long long
-            fprintf(output, ", %lli", this_entry->params[i].ll);
+            fmt_trace % this_entry->params[i].ll;
           }
           break;
 
         case PA_CHAR:
-          fprintf(output, ", %c", this_entry->params[i].c);
+          fmt_trace % this_entry->params[i].c;
           break;
 
         case PA_WCHAR:
-          fprintf(output, ", %lc", this_entry->params[i].w);
+          fmt_trace % this_entry->params[i].w;
           break;
 
         case PA_STRING:
         case PA_WSTRING:
         case PA_POINTER:
-          // Just output the pointer.  While it might be more helpful to
-          // dump the data out as a string, the current format allows for the
-          // format and parameter data to be passed back in through a
-          // suitable interpreter and hence used to generate a more readable
-          // output overall
-          fprintf(output, ", %p", this_entry->params[i].p);
+          fmt_trace % this_entry->params[i].p;
           break;
 
         case PA_FLOAT:
-          fprintf(output, ", %f", this_entry->params[i].f);
+          fmt_trace % this_entry->params[i].f;
           break;
 
         case PA_DOUBLE:
           // Allow for a long double
           if (this_cache->param_types[i] & PA_FLAG_LONG_DOUBLE)
           {
-            fprintf(output, ", %ld", this_entry->params[i].ld);
+            fmt_trace % this_entry->params[i].ld;
           }
           else
           {
-            fprintf(output, ", %d", this_entry->params[i].d);
+            fmt_trace % this_entry->params[i].d;
           }
           break;
 
         default:
           // Assume any other parameter is an int
-          fprintf(output, ", %i", this_entry->params[i].i);
+          fmt_trace % this_entry->params[i].i;
           break;
         }
       }
     }
 
-    // LF terminate the output line
-    fprintf(output, "\n");
+    // Write the formatted trace line out
+    try
+    {
+      fprintf(output, fmt_trace.str().c_str());
+    }
+    catch (...)
+    {
+      fprintf(output, "<corrupted trace>");
+    }
+
+    // Close the comments and LF terminate the output line
+    fprintf(output, "\"\n");
 
     // Now find the next trace entry
     this_entry += RAM_ENTRY_SIZE(this_entry);
