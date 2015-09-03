@@ -40,28 +40,24 @@
 
 #include "logger.h"
 
-pthread_mutex_t trc_ram_trc_cache_lock = PTHREAD_MUTEX_INITIALIZER;
-
-#define TRC_RAMTRACE(...)
-{
-  static int trc_id = 0;
-
-  pthread_mutex_lock(&trc_ram_trc_cache_lock);
-
-  if (log_id == 0)
-  {
-    // Fetch an id which will be unique to this trace call and cache the trace
-    // format string and parameter types
-    trc_id = Log::ramCacheTrcCall(__FILE__,__LINE__,__VA_ARGS__);
-  }
-
-  // Release the lock on the trace call cache
-  pthread_mutex_unlock(&trc_ram_trc_cache_lock);
-
-  // At this point, we have a valid trace id corresponding to this TRC_ line
-  // in the code.  Pass this to the route that stores this particular trace
-  // instance in the RAM buffer
-  Log::ramTrace(trc_id,__VA_ARGS__);
+// The following macro caches the details of the trace call being made and
+// stores the associated instance it (the "trace ID") in a static variable so
+// that subsequent calls to this trace line can be stored in the RAM trace
+// buffer with maximal efficiency.
+#define TRC_RAMTRACE(...)                                                     \
+{                                                                             \
+  static int trc_id = 0;                                                      \
+                                                                              \
+  pthread_mutex_lock(&Log::trc_ram_trc_cache_lock);                                \
+                                                                              \
+  if (trc_id == 0)                                                            \
+  {                                                                           \
+    trc_id = Log::ramCacheTrcCall(__FILE__,__LINE__,__VA_ARGS__);             \
+  }                                                                           \
+                                                                              \
+  pthread_mutex_unlock(&Log::trc_ram_trc_cache_lock);                              \
+                                                                              \
+  Log::ramTrace(trc_id,__VA_ARGS__);                                          \
 }
 
 #define LOG_ERROR(...) TRC_RAMTRACE(__VA_ARGS__) if (Log::enabled(Log::ERROR_LEVEL)) Log::write(Log::ERROR_LEVEL, __FILE__, __LINE__, __VA_ARGS__)
@@ -92,6 +88,11 @@ namespace Log
   const int DEBUG_LEVEL = 5;
 
   extern int loggingLevel;
+  extern pthread_mutex_t trc_ram_trc_cache_lock;
+
+  int ramCacheTrcCall(const char *module, int lineno, const char*fmt, ...);
+  void ramTrace(int trc_id, const char *fmt, ...);
+  void ramDecode(FILE *output);
 
   inline bool enabled(int level)
   {
