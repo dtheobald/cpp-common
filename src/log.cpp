@@ -647,11 +647,6 @@ void Log::ramDecode(FILE *output)
           }
           else
           {
-#if ATTEMPTING_TO_PRINT_STRING_CONTENTS
-            char *str_ptr;
-            wchar_t *wstr_ptr;
-#endif
-
             switch (this_cache->param_types[i] & ~PA_FLAG_MASK)
             {
             case PA_INT:
@@ -685,16 +680,16 @@ void Log::ramDecode(FILE *output)
               // copy the string to a new buffer of the appropriate size
               if (precision != -1)
               {
-                str_ptr = new char[precision + 1];
-                strncpy(str_ptr, (const char *)this_entry->params[i].p, precision);
-                str_ptr[precision] = 0;
+                char str[precision + 1];
+                strncpy(str, (const char *)this_entry->params[i].p, precision);
+                str[precision] = 0;
+                char *str_ptr = str;
+                fmt_trace % str_ptr;
               }
               else
               {
-                str_ptr = (char *)this_entry->params[i].p;
+                fmt_trace % (char *)this_entry->params[i].p;
               }
-
-              fmt_trace % str_ptr;
 
               // Save the string pointer in a list.  The string we've just
               // inserted might well be rubbish, as we only saved the pointer
@@ -715,16 +710,17 @@ void Log::ramDecode(FILE *output)
               // copy the string to a new buffer of the appropriate size
               if (precision != -1)
               {
-                wstr_ptr = new wchar_t[precision + 1];
-                wcsncpy(wstr_ptr, (const wchar_t *)this_entry->params[i].p, precision);
-                wstr_ptr[precision] = 0;
+                wchar_t wstr[precision + 1];
+                wcsncpy(wstr, (const wchar_t *)this_entry->params[i].p, precision);
+                wstr[precision] = 0;
+                wchar_t *wstr_ptr = wstr;
+                fmt_trace % wstr_ptr;
               }
               else
               {
-                wstr_ptr = (wchar_t *)this_entry->params[i].p;
+                fmt_trace % (wchar_t *)this_entry->params[i].p;
               }
 
-              fmt_trace % wstr_ptr;
               strings.push_back(this_entry->params[i].p);
 #else
               // We're not attempting to print string contents as they may be
