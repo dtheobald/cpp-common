@@ -635,7 +635,7 @@ public:
 
   static inline Stack* get_instance() {return INSTANCE;};
   virtual void initialize();
-  virtual void configure(std::string filename, 
+  virtual void configure(std::string filename,
                          ExceptionHandler* exception_handler,
                          CommunicationMonitor* comm_monitor = NULL,
                          StatisticCounter* realm_counter = NULL,
@@ -666,6 +666,7 @@ public:
 
   virtual bool add(Peer* peer);
   virtual void remove(Peer* peer);
+  virtual void peer_count(int);
 
 private:
   static Stack* INSTANCE;
@@ -691,6 +692,7 @@ private:
   static void fd_error_hook_cb(enum fd_hook_type type, struct msg* msg, struct peer_hdr* peer, void* other, struct fd_hook_permsgdata* pmd, void* stack_ptr);
 
   void set_trail_id(struct msg* fd_msg, SAS::TrailId trail);
+  void sas_log_peer_state(SAS::TrailId trail);
   static void fd_sas_log_diameter_message(enum fd_hook_type type,
                                           struct msg * msg,
                                           struct peer_hdr * peer,
@@ -718,6 +720,17 @@ private:
   CommunicationMonitor* _comm_monitor;
   StatisticCounter* _realm_counter;
   StatisticCounter* _host_counter;
+
+  // "Managed" peer count.  This is the number of peers as discovered by the
+  // upstream manager.  Most of the time it will be the same as the size of
+  // _peers, but will differ during management cycles as peers are added and
+  // removed and the managed value is more useful for reporting purposes.
+  //
+  // The constructor initialises it at -1 (not 0) to reflect the fact that the
+  // managed number of peers is unknown until the manager tells us, and in
+  // instances where there is no upstream manager, it will remain at -1
+  // indefinitely.
+  int _peer_count;
 
   // Map of Vendor->AVP name->AVP dictionary
   std::unordered_map<std::string, std::unordered_map<std::string, struct dict_object*>> _avp_map;
