@@ -45,7 +45,7 @@ Stack* Stack::INSTANCE = &DEFAULT_INSTANCE;
 Stack Stack::DEFAULT_INSTANCE;
 struct fd_hook_data_hdl* Stack::_sas_cb_data_hdl = NULL;
 
-Stack::Stack() : _initialized(false), _callback_handler(NULL), _callback_fallback_handler(NULL), _comm_monitor(NULL)
+Stack::Stack() : _initialized(false), _callback_handler(NULL), _callback_fallback_handler(NULL), _comm_monitor(NULL), _peer_count(-1)
 {
   pthread_mutex_init(&_peers_lock, NULL);
 }
@@ -79,12 +79,6 @@ void Stack::initialize()
     {
       throw Exception("fd_log_handler_register", rc); // LCOV_EXCL_LINE
     }
-    rc = fd_hook_register(HOOK_MASK(HOOK_MESSAGE_ROUTING_ERROR),
-                          fd_error_hook_cb, this, NULL, &_error_cb_hdlr);
-    if (rc != 0)
-    {
-      throw Exception("fd_log_handler_register", rc); // LCOV_EXCL_LINE
-    }
     rc = fd_hook_register(HOOK_MASK(HOOK_DATA_RECEIVED,
                                     HOOK_MESSAGE_LOCAL,
                                     HOOK_MESSAGE_ROUTING_FORWARD,
@@ -106,6 +100,12 @@ void Stack::initialize()
       {
         throw Exception("fd_hook_data_register", rc); // LCOV_EXCL_LINE
       }
+    }
+    rc = fd_hook_register(HOOK_MASK(HOOK_MESSAGE_ROUTING_ERROR),
+                    fd_error_hook_cb, this, _sas_cb_data_hdl, &_error_cb_hdlr);
+    if (rc != 0)
+    {
+      throw Exception("fd_log_handler_register", rc); // LCOV_EXCL_LINE
     }
     rc = fd_hook_register(HOOK_MASK(HOOK_MESSAGE_RECEIVED,
                                     HOOK_MESSAGE_SENT),
@@ -228,8 +228,59 @@ void Stack::fd_error_hook_cb(enum fd_hook_type type,
             msg2.command_code(),
             dest_host.c_str(),
             dest_realm.c_str());
-}
 
+  // Makes a SAS log if either of the following conditions holds:
+  //
+  // - the number of managed peers is zero (suggesting a configuration or DNS problem).
+  // - the number of currently connected peers is zero.
+  //
+  // FreeDiameter should only call us if the set of connected peers is zero (for one
+  // of these reasons), but we check explicitly below to ensure that no SAS
+  // log is made if we don't know the reason why.
+  //
+  // We use the count explicitly passed to us by the upstream manager
+  // to make the "managed peers zero" determination.  The "currently connected
+  // zero" condition is determined by checking the size of our own peer list,
+  // since we take peers out of our list if they subsequently failed to connect
+  // or fail realm identification checks.
+  //
+  // We don't bother looking at peers for whom connected() returns "false" as
+  // these are peers that have recently been started, and for which
+  // initial connectivity is still ongoing (so they should be considered "good"
+  // peers until we determine otherwise).
+  //
+  // The SAS logs won't appear if hss_hostname has been configured (rather than
+  // hss_realm) as we have no visibility of the connectedness of the single
+  // peer in this case (there is always exactly one peer and freeDiameter
+  // automatically retries connection failures on our behalf).
+  bool no_peers;
+  bool no_connected_peers;
+  pthread_mutex_lock(&_peers_lock);
+
+  no_peers = (_peer_count == 0);
+  no_connected_peers = (_peers.size() == 0);
+
+  pthread_mutex_unlock(&_peers_lock);
+
+  if (pmd != NULL)
+  {
+    if (no_peers)
+    {
+      SAS::Event event(pmd->trail, SASEvent::DIAMETER_NO_PEERS, 0);
+      event.add_var_param((char *)other);
+      event.add_var_param(dest_realm);
+      SAS::report_event(event);
+    }
+    else if (no_connected_peers)
+    {
+      SAS::Event event(pmd->trail, SASEvent::DIAMETER_NO_CONNECTED_PEERS, 0);
+      event.add_var_param((char *)other);
+      event.add_var_param(dest_host);
+      event.add_var_param(dest_realm);
+      SAS::report_event(event);
+    }
+  }
+}
 
 void Stack::fd_peer_hook_cb(enum fd_hook_type type,
                             struct msg * msg,
@@ -259,10 +310,13 @@ void Stack::fd_peer_hook_cb(enum fd_hook_type type,
   }
   else
   {
+    TRC_DEBUG("Callback (type %d) from freeDiameter: %s", type, peer->info.pi_diamid);
+
     DiamId_t host = peer->info.pi_diamid;
     DiamId_t realm = peer->info.runtime.pir_realm;
     pthread_mutex_lock(&_peers_lock);
     std::vector<Peer*>::iterator ii;
+    bool found = false;
     for (ii = _peers.begin();
          ii != _peers.end();
          ii++)
@@ -281,7 +335,7 @@ void Stack::fd_peer_hook_cb(enum fd_hook_type type,
             }
             else
             {
-              LOG_WARNING("Connected to %s in wrong realm, disconnect", host);
+              TRC_WARNING("Connected to %s in wrong realm (expected: %s, found: %s), so disconnect", host, (*ii)->realm().c_str(), realm);
               Diameter::Peer* stack_peer = *ii;
               remove_int(stack_peer);
               stack_peer->listener()->connection_failed(stack_peer);
@@ -296,11 +350,12 @@ void Stack::fd_peer_hook_cb(enum fd_hook_type type,
             stack_peer->listener()->connection_failed(stack_peer);
           }
         }
+        found = true;
         break;
       }
     }
 
-    if (ii == _peers.end())
+    if (!found)
     {
       // Peer not found.
       LOG_ERROR("Unexpected host on callback (type %d) from freeDiameter: %s", type, host);
@@ -507,6 +562,7 @@ void Stack::wait_stopped()
     }
     fd_log_handler_unregister();
     _initialized = false;
+    _peer_count = -1;
   }
 }
 
@@ -699,8 +755,25 @@ void Stack::remove_int(Peer* peer)
   {
     _peers.erase(ii);
   }
+  else
+  {
+    TRC_WARNING("Peer %s was not in our list", peer->host().c_str());
+  }
   std::string host = peer->host();
   fd_peer_remove((char*)host.c_str(), host.length());
+}
+
+void Stack::peer_count(int count)
+{
+  pthread_mutex_lock(&_peers_lock);
+  _peer_count = count;
+
+  if (_peer_count == 0)
+  {
+    TRC_ERROR("No Diameter peers have been found");
+  }
+
+  pthread_mutex_unlock(&_peers_lock);
 }
 
 void Stack::fd_sas_log_diameter_message(enum fd_hook_type type,
