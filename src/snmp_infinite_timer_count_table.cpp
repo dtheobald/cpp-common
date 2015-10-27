@@ -127,7 +127,9 @@ namespace SNMP
         int request_type = reqinfo->mode;
 
         snprint_objid(buf, sizeof(buf), input_oid, input_oid_len);
-        TRC_DEBUG("Handling SNMP request for OID %s", buf);
+        TRC_DEBUG("Handling SNMP %s request for OID %s",
+                  (request_type == MODE_GETNEXT) ? "GETNEXT" : "GET",
+                  buf);
 
         if (requests->processed)
         {
