@@ -38,6 +38,7 @@
 
 static bool _collect_messages = false;
 std::vector<MockSASMessage> mock_sas_messages;
+bool SAS::compression_enabled = false;
 
 void mock_sas_collect_messages(bool collect)
 {
