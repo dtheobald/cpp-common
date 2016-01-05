@@ -48,14 +48,7 @@
 {                                                                             \
   static int trc_id = 0;                                                      \
                                                                               \
-  pthread_mutex_lock(&Log::trc_ram_trc_cache_lock);                                \
-                                                                              \
-  if (trc_id == 0)                                                            \
-  {                                                                           \
-    trc_id = Log::ramCacheTrcCall(__FILE__,__LINE__,__VA_ARGS__);             \
-  }                                                                           \
-                                                                              \
-  pthread_mutex_unlock(&Log::trc_ram_trc_cache_lock);                              \
+  Log::ramCacheTrcCall(&trc_id,__FILE__,__LINE__,__VA_ARGS__);                \
                                                                               \
   Log::ramTrace(trc_id,__VA_ARGS__);                                          \
 }
@@ -81,7 +74,7 @@ namespace Log
   extern int loggingLevel;
   extern pthread_mutex_t trc_ram_trc_cache_lock;
 
-  int ramCacheTrcCall(const char *module, int lineno, const char*fmt, ...);
+  void ramCacheTrcCall(int *trc_id, const char *module, int lineno, const char*fmt, ...);
   void ramTrace(int trc_id, const char *fmt, ...);
   void ramDecode(FILE *output);
 
