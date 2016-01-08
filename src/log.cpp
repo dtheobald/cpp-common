@@ -80,6 +80,16 @@ const char* log_level[] = {"Error", "Warning", "Status", "Info", "Verbose", "Deb
 //    a valid trace entry
 // -  The calling code (see TRC_RAMTRACE in log.h) can safely treat a trc_id
 //    value of zero as meaning "trace call not cached yet".
+//
+// The param_types array contains a list of parameter types as determined by
+// parse_printf_format.  We need to do a bit of addition parsing that parse_printf_format
+// doesn't do to determine whether there are any variable-length width or
+// precision markers in the format string which we need to track using our own
+// flags (see /usr/include/printf.h for the predefined list) so that we can
+// interpret them correctly at ramTrace time.
+#define TRC_RAMTRC_PA_FLAG_WIDTH (1 << 14)
+#define TRC_RAMTRC_PA_FLAG_PRECISION (1 << 15)
+
 typedef struct
 {
   int         line_number;
@@ -87,6 +97,7 @@ typedef struct
   const char *fmt;
   int         num_params;
   int         entry_size;
+  bool        string_parms;
   int         param_types[1];
 
 } TRC_RAMTRC_CACHE;
@@ -95,6 +106,27 @@ typedef struct
 // store an basic type that can be passed to a printf call.  It is used by the
 // RAM trace code to store the parameter data passed on a given trace instance.
 // The decoder uses the trace cache to determine how to interpret each value.
+//
+// String values are stored as the length of the string, followed immediately
+// by the string data itself (not including the null terminator).  Note that
+// strings may be longer than a single TRC_RAMTRC_PARAM, in which case
+// multiple whole TRC_RAMTRC_PARAM structures are used to hold them in the RAM
+// trace buffer (we always round up to the next TRC_RAMTRC_PARAM boundary to
+// avoid hitting bus alignment errors when accessing trace data).
+//
+// The following macro returns the number of additional TRC_RAMTRC_PARAM
+// structures needed to house a string (on top of the first one containing
+// the string length).  The explicit "+ 1 - 1" is there to make the calculation
+// explicit
+// -  The "+ 1" is because we want to store a null terminated string
+// -  The "- 1" is because we want to round off the number of TRC_RAMTRCs downwards
+#define TRC_RAMTRC_STRING_NUM_ADDITIONAL_PARAMS(LENGTH, CHAR_SIZE) \
+        ((sizeof(int)                                              \
+           + ((LENGTH) * (CHAR_SIZE))                              \
+           + 1                                                     \
+           - 1)                                                    \
+         / sizeof(TRC_RAMTRC_PARAM))
+
 typedef union
 {
   int i;
@@ -103,6 +135,7 @@ typedef union
   double d;
   long double ld;
   void *p;
+  int slen;                            // Length of string in appropriate character width
 
 } TRC_RAMTRC_PARAM;
 
@@ -219,48 +252,20 @@ int Log::ramCacheTrcCall(const char *module, int lineno, const char*fmt, ...)
   // cache size (since its a 1-based index)
   trc_id = Log::ram_trc_cache_len;
 
-  // Firstly, determine whether the format string is just "%s".  If so, then
-  // the intention is clearly to trace out a string that has already been
-  // formatted, and, since we normally store the pointer to any string
-  // parameter rather than the string itself (and therefore will be lucky if
-  // the string is still valid at dump time), we would normally not get any
-  // useful info from such a trace.  Therefore, for "%s" logs only, we store
-  // the string data by value rather than reference
-  size_t num_params;
-  int entry_size;
-  TRC_RAMTRC_CACHE *cache_ent;
+  // Determine how many parameters to allow for using the parse_printf_format
+  // function.
+  size_t num_params = parse_printf_format(fmt, 0, NULL);
 
-  if (strcmp(fmt, "%s") == 0)
-  {
-    // Allocate an "empty" cache structure (no params)
-    cache_ent = (TRC_RAMTRC_CACHE *)malloc(offsetof(TRC_RAMTRC_CACHE, param_types));
+  // Get sufficient memory for the cache entry using the ANSI standard
+  // algorithm for determining variable structure lengths
+  TRC_RAMTRC_CACHE *cache_ent = (TRC_RAMTRC_CACHE *)malloc(offsetof(TRC_RAMTRC_CACHE, param_types) + (num_params * sizeof(int)));
 
-    // Leave the format blank to indicate that no formatting is to be done
-    cache_ent->fmt = NULL;
-    num_params = 0;
+  // Save the format string
+  cache_ent->fmt = fmt;
 
-    // Set entry size to -1 to indicate that this parameter is not used (the
-    // size of an instance of this log cannot be known in advance)
-    entry_size = -1;
-  }
-  else
-  {
-    // Determine how many parameters to allow for using the parse_printf_format
-    // function.
-    num_params = parse_printf_format(fmt, 0, NULL);
-    entry_size = RAM_SIZE(num_params);
-
-    // Get sufficient memory for the cache entry using the ANSI standard
-    // algorithm for determining variable structure lengths
-    cache_ent = (TRC_RAMTRC_CACHE *)malloc(offsetof(TRC_RAMTRC_CACHE, param_types) + (num_params * sizeof(int)));
-
-    // Save the format string
-    cache_ent->fmt = fmt;
-
-    // Call the parse function again, this time allowing enough space for the
-    // parameter types to be written out.
-    parse_printf_format(fmt, num_params, cache_ent->param_types);
-  }
+  // Call the parse function again, this time allowing enough space for the
+  // parameter types to be written out.
+  parse_printf_format(fmt, num_params, cache_ent->param_types);
 
   // Save the cache entry at the trace ID offset
   Log::ram_trc_cache[trc_id - 1] = cache_ent;
@@ -280,7 +285,195 @@ int Log::ramCacheTrcCall(const char *module, int lineno, const char*fmt, ...)
     cache_ent->module = module;
   }
 
-  cache_ent->entry_size = entry_size;
+  // Set the entry size based on the number of parameters.  Note that the
+  // entry size is more complex for trace statements containing string parameters
+  // (see next).
+  cache_ent->entry_size = RAM_SIZE(num_params);
+
+  // Determine whether any of the parameters is a string.  If so, entry
+  // length calculation for the RAM trace entry itself will be more involved.
+  cache_ent->string_parms = false;
+
+  for (size_t i = 0; i < num_params; i++)
+  {
+    if ((cache_ent->param_types[i] & PA_STRING) ||
+        (cache_ent->param_types[i] & PA_WSTRING))
+    {
+      // At least one of our parameters is a string.  Entry length calculation
+      // will be more complex
+      cache_ent->string_parms = true;
+    }
+  }
+
+  if (cache_ent->string_parms)
+  {
+    // Now, some unexpected pain.  parse_printf_format does a superb job of
+    // cracking out exactly what argument types you can expect when this format
+    // string is used in a variable argument formatting function (like our
+    // ramTrace function).  Unfortunately, it fails to identify which int
+    // parameters are actually variable precision values for a following
+    // string argument, which is vital for our purposes (since we need to
+    // copy the string values off and therefore need to know exactly how big they
+    // are).
+    //
+    // Therefore, scan through the argument list again, looking for variable
+    // precision markers, and use an unused flag value to mark the argument
+    // type as such (see /usr/include/printf.h for the existing flag values).
+    //
+    // While we're at it, look for variable width parameters ("%*.s" as opposed
+    // to "%.*s").  We're not going to do anything with these, but we need to
+    // know to skip them when storing param data.
+    const char *fmt_ptr = fmt;
+    bool checked_width = false;
+    bool checked_pres = false;
+    bool parse_failed = false;
+
+    for (int i = 0; i < cache_ent->num_params; i++)
+    {
+      fmt_ptr = strchr(fmt_ptr, '%');
+      // We need to skip escaped '%' characters
+      while ((fmt_ptr != NULL) && (memcmp(fmt_ptr, "%%", 2) == 0))
+      {
+        fmt_ptr = strchr(fmt_ptr + 2, '%');
+      }
+
+      if (fmt_ptr == NULL)
+      {
+        // Something's gone wrong - we were expecting to find at least one format
+        // specifier.
+        parse_failed = true;
+        break;
+      }
+
+      // Get the end of the format specifier
+      const char *fmt_end = strchr(fmt_ptr, ' ');
+
+      bool got_width = false;
+
+      if (!checked_width)
+      {
+        // Check whether this is going to be a width specifier by looking
+        // at the current format specifier in the format string.
+        const char *width_spec = strstr(fmt_ptr, "*.");
+
+        if ((width_spec != NULL) &&
+            ((fmt_end == NULL) || (width_spec < fmt_end)))
+        {
+          got_width = true;
+        }
+        checked_width = true;
+      }
+
+      if (got_width)
+      {
+        // We've found a "*" width marker.  We must note that we expect a
+        // width character to be passed, but we're going to ignore it (i.e.
+        // not store it in the RAM buffer) because the boost format function
+        // (see ramDecode) can't use this information anyway.
+        //
+        // Make sure this is an int (no flags).  If it isn't, something's gone
+        // wrong.
+        if (cache_ent->param_types[i] != PA_INT)
+        {
+          parse_failed = true;
+          break;
+        }
+
+        // Use an internal flag to indicate that its a width specifier
+        cache_ent->param_types[i] |= TRC_RAMTRC_PA_FLAG_WIDTH;
+
+        // We can subtract one param entry from the entry_size, as we're
+        // never going to write an entry into the RAM buffer for this argument
+        cache_ent->entry_size -= sizeof(TRC_RAMTRC_PARAM);
+
+        // Don't bump the format specifier.  We'll skip this branch next time
+        // round because checked_width will be set.
+      }
+      else
+      {
+        // Look for a precision marker
+        bool got_pres = false;
+        if (!checked_pres)
+        {
+          // Check whether this is going to be a precision specifier by looking
+          // at the current format specifier in the format string.
+          const char *pres_spec = strstr(fmt_ptr, ".*");
+
+          if ((pres_spec != NULL) &&
+              ((fmt_end == NULL) || (pres_spec < fmt_end)))
+          {
+            got_pres = true;
+          }
+          checked_pres = true;
+        }
+
+        if (got_pres)
+        {
+          // We've found a "*" precision marker.  We'll be looking for this while
+          // tracing the following argument (which should be a string of some
+          // kind) and using it as the limit on the number of bytes read.
+          //
+          // Make sure this is an int (no flags).  If it isn't, something's gone
+          // wrong.
+          if (cache_ent->param_types[i] != PA_INT)
+          {
+            parse_failed = true;
+            break;
+          }
+
+          // Use an internal flag to indicate that its a precision specifier
+          cache_ent->param_types[i] |= TRC_RAMTRC_PA_FLAG_PRECISION;
+
+          // We can subtract one param entry from the entry_size, as we're
+          // never going to write an entry into the RAM buffer for this argument
+          cache_ent->entry_size -= sizeof(TRC_RAMTRC_PARAM);
+
+          // Don't bump the format specifier.  We'll skip this branch next time
+          // round because checked_pres will be set.
+        }
+        else
+        {
+          // This is not a pesky variable width or precision specifier, so we can
+          // just skip our format pointer past it (so that the next loop, if any
+          // picks up the next format specifier) and clear the width and
+          // precision check flags.
+          fmt_ptr++;
+          checked_width = false;
+          checked_pres = false;
+        }
+      }
+    }
+
+    // Now that we've reached the end of the list, we should find no more
+    // argument format specifiers in the string.  If we do, we've messed up
+    // somewhere in the above walkthrough
+    fmt_ptr = strchr(fmt_ptr, '%');
+    // We need to skip escaped '%' characters
+    while ((fmt_ptr != NULL) && (memcmp(fmt_ptr, "%%", 2) == 0))
+    {
+      fmt_ptr = strchr(fmt_ptr + 2, '%');
+    }
+
+    if (fmt_ptr != NULL)
+    {
+      // Something's gone wrong - we weren't expecting to find any more format
+      // specifiers.
+      parse_failed = true;
+    }
+
+    if (parse_failed)
+    {
+      // We couldn't correlate what parse_printf_format said with the format
+      // specifiers we found, which means that it isn't safe to attempt to
+      // print out arguments with this trace line (we might run off the end
+      // of the argument list, or attempt to dump a non-null terminated string
+      // parameter).
+      cache_ent->fmt = "!!! RAM TRACE ERROR.  UNABLE TO PARSE FORMAT STRING !!!";
+      cache_ent->entry_size = RAM_SIZE(0);
+      cache_ent->num_params = 0;
+      cache_ent->string_parms  = false;
+    }
+  }
 
   return(trc_id);
 }
@@ -298,26 +491,157 @@ void Log::ramTrace(int trc_id, const char *fmt, ...)
   TRC_RAMTRC_CACHE *this_cache = Log::ram_trc_cache[trc_id - 1];
   int entry_size = this_cache->entry_size;
   int string_length;
-  char *string_value = NULL;
+  void *string_value;
+  int char_size;
+  int stripped_type;
 
-  // If entry size is -1, this implies that our argument list is a single
-  // string and we need to pass the argument by value rather than data
-  if (entry_size == -1)
+  // If there are any string parameters, we need to calculate their length to determine
+  // whether we're going to need more than one TRC_RAMTRC_PARAM structures per
+  // actual parameter.  Only do this if there are any string parameters as
+  // this is a relatively costly exercise that we should avoid if possible.
+  if (this_cache->string_parms)
   {
-    // Get the string value and length
-    string_value = va_arg(args, char *);
-    string_length = strlen(string_value);
+    int *type = this_cache->param_types;
+    va_list args_pre;
+    va_copy(args_pre, args);
+    string_length = -1;
 
-    // Calculate the number of TRC_RAMTRC_PARAM structures we'll need in order
-    // to pass the string parameter by value.  To explain the slightly odd
-    // looking calculation below (which will be sensibly optimised by the
-    // compiler).
-    // -  We need enough space to store the string and its null terminator,
-    //    hence the "+1"
-    // -  We need to round UP to the number of TRC_RAMTRC_PARAMs that can
-    //    store this amount (hence the +(sizeof(TRC_RAMTRC_PARAM) - 1))
-    int num_params = ((string_length + 1 + (sizeof(TRC_RAMTRC_PARAM) - 1)) / sizeof(TRC_RAMTRC_PARAM));
-    entry_size = RAM_SIZE(num_params);
+    // Cycle through the parameters looking for strings
+    for (int i = 0; i < this_cache->num_params; i++)
+    {
+      bool got_width_or_precision = false;
+
+      if (*type & PA_FLAG_PTR)
+      {
+        // Ignore this pointer
+        va_arg(args_pre, void *);
+      }
+      else
+      {
+        // Ignore anything that isn't a string.  Unfortunately, we still need to
+        // crack the pointer types out as we need to explicitly skip past them
+        // by size
+        stripped_type = (*type & ~PA_FLAG_MASK);
+        switch (stripped_type)
+        {
+        case PA_INT:
+          // use int, long or long long as appropriate.  Check for the
+          // int case first for performance thats the most likely type.
+          //
+          // shorts are passed as ints and you get annoying compiler warnings if
+          // you do "va_arg(args_pre, short)", so ignore the PA_FLAG_SHORT flag.
+          if (!(*type & (PA_FLAG_LONG|PA_FLAG_LONG_LONG)))
+          {
+            if (*type & (TRC_RAMTRC_PA_FLAG_PRECISION|TRC_RAMTRC_PA_FLAG_WIDTH))
+            {
+              // This is a variable width or precision marker. If the latter,
+              // we need to save the string size so that it can be used in the
+              // immediately following string value sizing.
+              if (*type & TRC_RAMTRC_PA_FLAG_PRECISION)
+              {
+                string_length = va_arg(args_pre, int);
+              }
+              else
+              {
+                // Ignore the value of variable width specifiers
+                va_arg(args_pre, int);
+              }
+              got_width_or_precision = true;
+            }
+            else
+            {
+              va_arg(args_pre, int);
+            }
+          }
+          else if (*type & PA_FLAG_LONG)
+          {
+            va_arg(args_pre, long);
+          }
+          else
+          {
+            // Must be a long long
+            va_arg(args_pre, long long);
+          }
+          break;
+
+        case PA_CHAR:
+        case PA_WCHAR:
+          // chars and wide chars are passed as ints and you get annoying
+          // compiler warnings if you do "va_arg(args_pre, char)", so treat as an
+          // integer.
+          va_arg(args_pre, int);
+          break;
+
+        case PA_POINTER:
+          // These can be treated as void *s
+          va_arg(args_pre, void *);
+          break;
+
+        case PA_STRING:
+        case PA_WSTRING:
+          // Found a (possibly wide) string
+          string_value = va_arg(args_pre, void *);
+          char_size = (stripped_type == PA_WSTRING) ? sizeof(wchar_t) : sizeof(char);
+
+          if (string_value != NULL)
+          {
+            // Check whether we have a saved string length (from a prior precision spec).
+            if (string_length == -1)
+            {
+              string_length = (stripped_type == PA_WSTRING)
+                               ? wcslen((const wchar_t *)string_value)
+                               : strlen((const char *)string_value);
+            }
+          }
+          else
+          {
+            // String length can only be zero if the pointer is NULL.
+            string_value = 0;
+          }
+
+          // Increase the entry size by the number of TRC_RAMTRC_PARAMs needed
+          // to hold the string (which may be zero, if the string can fit into
+          // the same TRC_RAMTRC_PARAM as its length)
+          entry_size +=
+            TRC_RAMTRC_STRING_NUM_ADDITIONAL_PARAMS(string_length, char_size) * sizeof(TRC_RAMTRC_PARAM);
+          break;
+
+        case PA_FLOAT:
+          // floats are passed as doubles and you get annoying compiler warnings
+          // if you do "va_arg(args_pre, float)", so treat as a double.
+          va_arg(args_pre, double);
+          break;
+
+        case PA_DOUBLE:
+          // Allow for a long double
+          if (*type & PA_FLAG_LONG_DOUBLE)
+          {
+            va_arg(args_pre, long double);
+          }
+          else
+          {
+            va_arg(args_pre, double);
+          }
+          break;
+
+        default:
+          // Assume any other parameter is an int
+          va_arg(args_pre, int);
+          break;
+        }
+      }
+
+      if (!got_width_or_precision)
+      {
+        // Clear any string length we've cached as it can no longer be valid.
+        string_length = -1;
+      }
+
+      // Next type to check.
+      type++;
+    }
+
+    va_end(args_pre);
   }
 
   // Find space in the buffer to write our trace entry into
@@ -368,95 +692,162 @@ void Log::ramTrace(int trc_id, const char *fmt, ...)
   // Fill in the parameters, if any.  This is slightly involved, as we need to
   // be careful to pull the arguments off the stack according to their size,
   // which we determine from the trace cache entry.
-  //
-  // If we have already cracked out a single string parameter, it means we
-  // aren't using pass by value and are just strcpying the string into the
-  // preallocated space
-  if (string_value != NULL)
-  {
-    strcpy((char *)this_slot->params, string_value);
-  }
-  else
-  {
-    int *type = this_cache->param_types;
-    TRC_RAMTRC_PARAM *value = this_slot->params;
+  int *type = this_cache->param_types;
+  TRC_RAMTRC_PARAM *value = this_slot->params;
+  string_length = -1;
 
-    for (int i = 0; i < this_cache->num_params; i++)
+  for (int i = 0; i < this_cache->num_params; i++)
+  {
+    int num_params = 1;
+    bool got_width_or_precision = false;
+    if (*type & PA_FLAG_PTR)
     {
-      if (*type & PA_FLAG_PTR)
+      // This is a pointer and can be safely treated as a void *
+      value->p = va_arg(args, void *);
+    }
+    else
+    {
+      stripped_type = (*type & ~PA_FLAG_MASK);
+      switch (stripped_type)
       {
-        // This is a pointer and can be safely treated as a void *
-        value->p = va_arg(args, void *);
-      }
-      else
-      {
-        switch (*type & ~PA_FLAG_MASK)
+      case PA_INT:
+        // use int, long or long long as appropriate.  Check for the
+        // int case first for performance thats the most likely type.
+        //
+        // shorts are passed as ints and you get annoying compiler warnings if
+        // you do "va_arg(args, short)", so ignore the PA_FLAG_SHORT flag.
+        if (!(*type & (PA_FLAG_LONG|PA_FLAG_LONG_LONG)))
         {
-        case PA_INT:
-          // use int, long or long long as appropriate.  Check for the
-          // int case first for performance thats the most likely type.
-          //
-          // shorts are passed as ints and you get annoying compiler warnings if
-          // you do "va_arg(args, short)", so ignore the PA_FLAG_SHORT flag.
-          if (!(*type & (PA_FLAG_LONG|PA_FLAG_LONG_LONG)))
+          if (*type & (TRC_RAMTRC_PA_FLAG_PRECISION|TRC_RAMTRC_PA_FLAG_WIDTH))
+          {
+            // This is a variable width or precision marker and the value is not
+            // explicitly recorded in the RAM buffer. If its the latter,
+            // we need to save the string size so that it can be used in the
+            // immediately following string value sizing.
+            if (*type & TRC_RAMTRC_PA_FLAG_PRECISION)
+            {
+              string_length = va_arg(args, int);
+            }
+            else
+            {
+              // Ignore the value of variable width specifiers
+              va_arg(args, int);
+            }
+
+            got_width_or_precision = true;
+
+            // We haven't written the value of this width or precision specifier
+            // to the RAM buffer, so set the num_params field to 0
+            num_params = 0;
+          }
+          else
           {
             value->i = va_arg(args, int);
           }
-          else if (*type & PA_FLAG_LONG)
-          {
-            value->l = va_arg(args, long);
-          }
-          else
-          {
-            // Must be a long long
-            value->ll = va_arg(args, long long);
-          }
-          break;
-
-        case PA_CHAR:
-        case PA_WCHAR:
-          // chars and wide chars are passed as ints and you get annoying
-          // compiler warnings if you do "va_arg(args, char)", so treat as an
-          // integer.
-          value->i = va_arg(args, int);
-          break;
-
-        case PA_STRING:
-        case PA_WSTRING:
-        case PA_POINTER:
-          // These can all be treated as void *s
-          value->p = va_arg(args, void *);
-          break;
-
-        case PA_FLOAT:
-          // floats are passed as doubles and you get annoying compiler warnings
-          // if you do "va_arg(args, float)", so treat as a double.
-          value->d = va_arg(args, double);
-          break;
-
-        case PA_DOUBLE:
-          // Allow for a long double
-          if (*type & PA_FLAG_LONG_DOUBLE)
-          {
-            value->ld = va_arg(args, long double);
-          }
-          else
-          {
-            value->d = va_arg(args, double);
-          }
-          break;
-
-        default:
-          // Assume any other parameter is an int
-          value->i = va_arg(args, int);
-          break;
         }
-      }
+        else if (*type & PA_FLAG_LONG)
+        {
+          value->l = va_arg(args, long);
+        }
+        else
+        {
+          // Must be a long long
+          value->ll = va_arg(args, long long);
+        }
+        break;
 
-      // Next type/value
-      type++;
-      value++;
+      case PA_CHAR:
+      case PA_WCHAR:
+        // chars and wide chars are passed as ints and you get annoying
+        // compiler warnings if you do "va_arg(args, char)", so treat as an
+        // integer.
+        value->i = va_arg(args, int);
+        break;
+
+      case PA_POINTER:
+        // These can be treated as void *s
+        value->p = va_arg(args, void *);
+        break;
+
+      case PA_STRING:
+      case PA_WSTRING:
+        // Found a (possibly wide) string
+        string_value = va_arg(args, void *);
+        char_size = (stripped_type == PA_WSTRING) ? sizeof(wchar_t) : sizeof(char);
+
+        if (string_value != NULL)
+        {
+          // Check whether we have a saved string length (from a prior precision spec).
+          if (string_length == -1)
+          {
+            string_length = (stripped_type == PA_WSTRING)
+                             ? wcslen((const wchar_t *)string_value)
+                             : strlen((const char *)string_value);
+          }
+        }
+        else
+        {
+          // String length can only be zero if the pointer is NULL.
+          string_length = 0;
+        }
+
+        value->slen = string_length;
+
+        // Copy the string data directly after the slen field and null terminate it
+        if (string_length != 0)
+        {
+          memcpy((&value->slen + 1), string_value, string_length * char_size);
+          if (stripped_type == PA_WSTRING)
+          {
+            ((wchar_t *)(&value->slen + 1))[string_length] = 0;
+          }
+          else
+          {
+            ((char *)(&value->slen + 1))[string_length] = 0;
+          }
+        }
+
+        // Calculate the number of parameter structures we've just used up.
+        // Note that we always round up to a whole number of such structures
+        // to keep consecutive RAM buffer entries data aligned.
+        num_params +=
+             TRC_RAMTRC_STRING_NUM_ADDITIONAL_PARAMS(string_length, char_size);
+        break;
+
+      case PA_FLOAT:
+        // floats are passed as doubles and you get annoying compiler warnings
+        // if you do "va_arg(args, float)", so treat as a double.
+        value->d = va_arg(args, double);
+        break;
+
+      case PA_DOUBLE:
+        // Allow for a long double
+        if (*type & PA_FLAG_LONG_DOUBLE)
+        {
+          value->ld = va_arg(args, long double);
+        }
+        else
+        {
+          value->d = va_arg(args, double);
+        }
+        break;
+
+      default:
+        // Assume any other parameter is an int
+        value->i = va_arg(args, int);
+        break;
+      }
     }
+
+    if (!got_width_or_precision)
+    {
+      // Clear any string length we've cached as it can no longer be valid.
+      string_length = -1;
+    }
+
+    // Next type and value struct to write to.
+    type++;
+    value += num_params;
   }
 
   // Bump the next_slot pointer past the trace entry we've just written.
@@ -540,260 +931,103 @@ void Log::ramDecode(FILE *output)
 
     fprintf(output, " %s.%06ld UTC %s:%d: ", hr_dateutc, this_entry->time.tv_usec, this_cache->module, this_cache->line_number);
 
-    // Treat trace lines that have been passed by value (because they're already
-    // formatted) separately.  These are identified by having no format string.
+    // Use the boost library to print the format out with the parameters we've
+    // saved in place (it would be simpler to build up a va_list and call
+    // vfprintf, but for the fact that va_lists can't be constructed unless
+    // the parameters are on the call stack).
+    boost::basic_format<char> fmt_trace(this_cache->fmt);
 
-#if ATTEMPTING_TO_PRINT_STRING_CONTENTS
-    std::vector<void*> strings;
-#endif
-
-    if (this_cache->fmt == NULL)
+    // The boost library does not support the variable width or precision marker
+    // '*' (e.g. "... %.*s ...." or "... %*.s...") in format strings, which is
+    // handy, because we haven't saved them off, but we need to tiptoe carefully
+    // through the cache structure so that we don't miscount parameters.
+    for (int i = 0; i < this_cache->num_params; i++)
     {
-      // Just print out the string starting at the parameter structure
-      fprintf(output, "%s", (char *)this_entry->params);
-    }
-    else
-    {
-      // Use the boost library to print the format out with the parameters we've
-      // saved in place (it would be simpler to build up a va_list and call
-      // vfprintf, but for the fact that va_lists can't be constructed unless
-      // the parameters are on the call stack).
-      boost::basic_format<char> fmt_trace(this_cache->fmt);
-
-      // Unfortunately, the boost library does not support the precision marker
-      // '*' (e.g. "... %.*s ....") in format strings, which is a shame because
-      // if you pass in the integer parameter that specifies the string length
-      // (as returned by the parse_printf_format routine) boost goes
-      // "you've specified too many arguments" and bombs out.
-      //
-      // Therefore, we have to scan through the format string as we're adding
-      // parameters to the output object and, if we hit an integer, we have to
-      // determine whether its the precision argument and save it off.
-      //
-      // At the moment, we don't actually use the precision value (other than
-      // as a reminder that need to skip the "fmt_trace % this_entry->params[i].i;"
-      // for the parameter) as we don't print string contents - just the
-      // pointers to them.
-      const char *fmt_ptr = this_cache->fmt;
-      int precision = -1;
-
-      for (int i = 0; i < this_cache->num_params; i++)
+      if (this_cache->param_types[i] & PA_FLAG_PTR)
       {
-        fmt_ptr = strchr(fmt_ptr, '%');
-        // We need to skip escaped '%' characters
-        while ((fmt_ptr != NULL) && (memcmp(fmt_ptr, "%%", 2) == 0))
+        // This is a pointer
+        fmt_trace % this_entry->params[i].p;
+      }
+      else
+      {
+        switch (this_cache->param_types[i] & ~PA_FLAG_MASK)
         {
-          fmt_ptr = strchr(fmt_ptr + 2, '%');
-        }
-
-        if (fmt_ptr == NULL)
-        {
-          // Something's gone wrong.  Break out of the loop
-          fprintf(output, "Unexpectedly reached the end of the format specifiers \"%s\"", this_cache->fmt);
-          break;
-        }
-
-        bool got_pres = false;
-
-        if (precision == -1)
-        {
-          // Check whether this is going to be a precision specifier by looking
-          // at the current format specifier in the format string.
-          const char *fmt_end = strchr(fmt_ptr, ' ');
-          const char *pres_spec = strstr(fmt_ptr, ".*");
-
-          if ((pres_spec != NULL) &&
-              ((fmt_end == NULL) || (pres_spec < fmt_end)))
+        case PA_INT:
+          // use int, long or long long as appropriate.
+          if (!(this_cache->param_types[i] & (PA_FLAG_LONG|PA_FLAG_LONG_LONG)))
           {
-            got_pres = true;
+            // We don't trace out precision or width values
+            if (!(this_cache->param_types[i] & (TRC_RAMTRC_PA_FLAG_PRECISION|TRC_RAMTRC_PA_FLAG_WIDTH)))
+            {
+              fmt_trace % this_entry->params[i].i;
+            }
           }
-        }
-
-        if ((precision == -1) && got_pres)
-        {
-          // We've found a "*" precision marker.  We must save this value
-          // and use it to format the following string/wide string
-          // appropriately
-          //
-          // Make sure this is an int (no flags).  If it isn't, something's gone
-          // wrong.
-          if (this_cache->param_types[i] != PA_INT)
+          else if (this_cache->param_types[i] & PA_FLAG_LONG)
           {
-            fprintf(output, "Unexpectedly found field of type %x when was expecting a PA_INT in \"%s\"", this_cache->param_types[i], this_cache->fmt);
-            fmt_ptr = NULL;
-            break;
-          }
-
-          precision = this_entry->params[i].i;
-
-          if (precision < 0)
-          {
-            // Unexpected.  We must drop out here as otherwise we'll loop
-            // indefinitely
-            fmt_ptr = NULL;
-            fprintf(output, "Unexpectedly found negative precision value %d in \"%s\"", precision, this_cache->fmt);
-            break;
-          }
-
-          // Don't bump the format specifier.  We'll skip this branch next time
-          // round because precision will be set.
-        }
-        else
-        {
-          if (this_cache->param_types[i] & PA_FLAG_PTR)
-          {
-            // This is a pointer
-            fmt_trace % this_entry->params[i].p;
+            fmt_trace % this_entry->params[i].l;
           }
           else
           {
-            switch (this_cache->param_types[i] & ~PA_FLAG_MASK)
-            {
-            case PA_INT:
-              // use int, long or long long as appropriate.
-              if (!(this_cache->param_types[i] & (PA_FLAG_LONG|PA_FLAG_LONG_LONG)))
-              {
-                fmt_trace % this_entry->params[i].i;
-              }
-              else if (this_cache->param_types[i] & PA_FLAG_LONG)
-              {
-                fmt_trace % this_entry->params[i].l;
-              }
-              else
-              {
-                // Must be a long long
-                fmt_trace % this_entry->params[i].ll;
-              }
-              break;
-
-            case PA_CHAR:
-              fmt_trace % this_entry->params[i].i;
-              break;
-
-            case PA_WCHAR:
-              fmt_trace % this_entry->params[i].i;
-              break;
-
-            case PA_STRING:
-#if ATTEMPTING_TO_PRINT_STRING_CONTENTS
-              // If we have saved a precision value from the previous parameter,
-              // copy the string to a new buffer of the appropriate size
-              if (precision != -1)
-              {
-                char str[precision + 1];
-                strncpy(str, (const char *)this_entry->params[i].p, precision);
-                str[precision] = 0;
-                char *str_ptr = str;
-                fmt_trace % str_ptr;
-              }
-              else
-              {
-                fmt_trace % (char *)this_entry->params[i].p;
-              }
-
-              // Save the string pointer in a list.  The string we've just
-              // inserted might well be rubbish, as we only saved the pointer
-              // which could have been to data that was on the stack or was in
-              // heap space that has since been reallocated.  If that's the case
-              // the pointer itself might still have diagnostic value
-              strings.push_back(this_entry->params[i].p);
-#else
-              // We're not attempting to print string contents as they may be
-              // misleading.  Just trace out the string pointer
-              fmt_trace % this_entry->params[i].p;
-#endif
-              break;
-
-            case PA_WSTRING:
-#if ATTEMPTING_TO_PRINT_STRING_CONTENTS
-              // If we have saved a precision value from the previous parameter,
-              // copy the string to a new buffer of the appropriate size
-              if (precision != -1)
-              {
-                wchar_t wstr[precision + 1];
-                wcsncpy(wstr, (const wchar_t *)this_entry->params[i].p, precision);
-                wstr[precision] = 0;
-                wchar_t *wstr_ptr = wstr;
-                fmt_trace % wstr_ptr;
-              }
-              else
-              {
-                fmt_trace % (wchar_t *)this_entry->params[i].p;
-              }
-
-              strings.push_back(this_entry->params[i].p);
-#else
-              // We're not attempting to print string contents as they may be
-              // misleading.  Just trace out the string pointer
-              fmt_trace % this_entry->params[i].p;
-#endif
-              break;
-
-            case PA_POINTER:
-              fmt_trace % this_entry->params[i].p;
-              break;
-
-            case PA_FLOAT:
-              fmt_trace % this_entry->params[i].d;
-              break;
-
-            case PA_DOUBLE:
-              // Allow for a long double
-              if (this_cache->param_types[i] & PA_FLAG_LONG_DOUBLE)
-              {
-                fmt_trace % this_entry->params[i].ld;
-              }
-              else
-              {
-                fmt_trace % this_entry->params[i].d;
-              }
-              break;
-
-            default:
-              // Assume any other parameter is an int
-              fmt_trace % this_entry->params[i].i;
-              break;
-            }
+            // Must be a long long
+            fmt_trace % this_entry->params[i].ll;
           }
+          break;
 
-          // Bump the format pointer so that we look at the next format specifier
-          // (if any) and reset any precision value we might have parsed out
-          fmt_ptr++;
-          precision = -1;
-        }
-      }
+        case PA_CHAR:
+          fmt_trace % this_entry->params[i].i;
+          break;
 
-      // Write the formatted trace line out.  If we couldn't parse the format
-      // string, we've already traced the error
-      if (fmt_ptr != NULL)
-      {
-        try
-        {
-          fwrite(fmt_trace.str().c_str(), strlen(fmt_trace.str().c_str()), 1, output);
-        }
-        catch (...)
-        {
-          fprintf(output, "<corrupted trace>");
+        case PA_WCHAR:
+          fmt_trace % this_entry->params[i].i;
+          break;
+
+        case PA_STRING:
+          // The string data starts immediately after the string length value
+          fmt_trace % (char *)(&this_entry->params[i].slen + 1);
+          break;
+
+        case PA_WSTRING:
+          // The string data starts immediately after the string length value
+          fmt_trace % (wchar_t *)(&this_entry->params[i].slen + 1);
+          break;
+
+        case PA_POINTER:
+          fmt_trace % this_entry->params[i].p;
+          break;
+
+        case PA_FLOAT:
+          fmt_trace % this_entry->params[i].d;
+          break;
+
+        case PA_DOUBLE:
+          // Allow for a long double
+          if (this_cache->param_types[i] & PA_FLAG_LONG_DOUBLE)
+          {
+            fmt_trace % this_entry->params[i].ld;
+          }
+          else
+          {
+            fmt_trace % this_entry->params[i].d;
+          }
+          break;
+
+        default:
+          // Assume any other parameter is an int
+          fmt_trace % this_entry->params[i].i;
+          break;
         }
       }
     }
 
-#if ATTEMPTING_TO_PRINT_STRING_CONTENTS
-    // If we had any strings, print their pointer values out as these will
-    // often be more useful than the string values themselves (which might
-    // have been overwritten).
-    if (!strings.empty())
+    // Write the formatted trace line out.
+    try
     {
-      fprintf(output, ":string pointers");
-
-      for (std::vector<void*>::iterator iter = strings.begin();
-           iter != strings.end();
-           ++iter)
-      {
-        fprintf(output, ",%p", *iter);
-      }
+      fwrite(fmt_trace.str().c_str(), strlen(fmt_trace.str().c_str()), 1, output);
     }
-#endif
+    catch (...)
+    {
+      fprintf(output, "<corrupted trace>");
+    }
 
     // LF terminate the output line
     fprintf(output, "\n");
