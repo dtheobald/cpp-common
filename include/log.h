@@ -70,6 +70,10 @@ namespace Log
     return (level <= loggingLevel);
 #endif
   }
+
+
+  void start_watching_for_log_level_changes(std::string filename);
+
   void setLoggingLevel(int level);
   Logger* setLogger(Logger *log);
   void write(int level, const char *module, int line_number, const char *fmt, ...);

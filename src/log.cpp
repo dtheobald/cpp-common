@@ -40,6 +40,8 @@
 #include <string.h>
 #include <pthread.h>
 #include <algorithm>
+#include <fstream>
+#include <thread>
 #include "log.h"
 
 const char* log_level[] = {"Error", "Warning", "Status", "Info", "Verbose", "Debug"};
@@ -51,7 +53,42 @@ namespace Log
   static Logger logger_static;
   static Logger *logger = &logger_static;
   static pthread_mutex_t serialization_lock = PTHREAD_MUTEX_INITIALIZER;
+  static std::thread* watch_thread = NULL;
   int loggingLevel = 4;
+}
+
+static void watch_for_log_level_changes(std::string filename)
+{
+  char input[32];
+
+  while (true)
+  {
+    std::ifstream is(filename);
+
+    if (!is)
+    {
+      TRC_ERROR("Could not read from %s", filename.c_str());
+      return;
+    }
+
+    is.getline(input, 32);
+    TRC_STATUS("Read '%s'", input);
+    int log_level = std::atoi(input);
+    if (log_level > 0)
+    {
+      Log::setLoggingLevel(log_level);
+      TRC_STATUS("Changed log level to %d", log_level);
+    }
+    else
+    {
+      TRC_ERROR("Invalid log input");
+    }
+  }
+}
+
+void Log::start_watching_for_log_level_changes(std::string filename)
+{
+  watch_thread = new std::thread(watch_for_log_level_changes, filename);
 }
 
 void Log::setLoggingLevel(int level)
