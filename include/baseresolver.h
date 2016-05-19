@@ -149,7 +149,7 @@ protected:
                       DnsCachedResolver* dns_client);
     virtual ~NAPTRCacheFactory();
 
-    NAPTRReplacement* get(std::string key, int& ttl);
+    NAPTRReplacement* get(std::string key, int& ttl, SAS::TrailId trail);
     void evict(std::string key, NAPTRReplacement* value);
 
   private:
@@ -189,7 +189,7 @@ protected:
     SRVCacheFactory(int default_ttl, DnsCachedResolver* dns_client);
     virtual ~SRVCacheFactory();
 
-    SRVPriorityList* get(std::string key, int&ttl);
+    SRVPriorityList* get(std::string key, int&ttl, SAS::TrailId trail);
     void evict(std::string key, SRVPriorityList* value);
 
   private:
