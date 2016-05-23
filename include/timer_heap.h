@@ -38,7 +38,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <vector>
-#include <boost/heap/binomial_heap.hpp>
+#include <boost/heap/fibonacci_heap.hpp>
 
 class TimerHeap;
 class HeapableTimer;
@@ -76,7 +76,9 @@ protected:
   // The current position of this timer in the heap's underlying array. The
   // TimerHeap is responsible for keeping this up-to-date as it moves the
   // timer around.
-  boost::heap::binomial_heap<HeapableTimer*, boost::heap::compare<PopsBefore>>::handle_type _heap_handle;
+  boost::heap::fibonacci_heap<HeapableTimer*,
+    boost::heap::compare<PopsBefore>,
+    boost::heap::mutable_<true>>::handle_type _heap_handle;
 };
 
 
@@ -85,18 +87,10 @@ bool PopsBefore::operator()(HeapableTimer* const& t1, HeapableTimer* const& t2) 
   return t1->get_pop_time() >= t2->get_pop_time();
 }
 
-
-
-/// Heap data structure for storing timers. This has a tree structure, with
-/// every element having 0, 1 or 2 children, and ordered such that every
-/// timer's pop time is less than or equal to its children's pop time. This
-/// means that:
-///
-/// * finding the next timer to pop is an O(1) operation
-/// * inserting a new timer is an O(log n) operation
-/// * deleting a timer is an O(log n) operation
-/// * changing the pop time of a timer is an O(log n) operation
-class TimerHeap : public boost::heap::binomial_heap<HeapableTimer*, boost::heap::compare<PopsBefore>>
+/// Wrapper around a heap data structure for storing timers efficiently.
+class TimerHeap : public boost::heap::fibonacci_heap<HeapableTimer*,
+  boost::heap::compare<PopsBefore>,
+  boost::heap::mutable_<true>>
 {
 public:
   /// Adds a timer to the heap. This doesn't take ownership of the timer's
