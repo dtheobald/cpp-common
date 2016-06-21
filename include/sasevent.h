@@ -112,6 +112,8 @@ namespace SASEvent {
 
   const int CASS_CONNECT_FAIL = COMMON_BASE + 0x0300;
 
+  const int HUSSY_BASE = 0x870000;
+
 } // namespace SASEvent
 
 #endif
