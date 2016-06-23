@@ -693,8 +693,8 @@ void MemcachedStore::update_view()
         Utils::split_string(line, '=', tokens, 0, true);
         if (tokens.size() != 2)
         {
-          LOG_ERROR("Malformed %s file", _config_file.c_str());
-          break;
+          LOG_ERROR("Malformed %s line (%s)", _config_file.c_str(), line.c_str());
+          continue;
         }
 
         LOG_STATUS(" %s=%s", tokens[0].c_str(), tokens[1].c_str());

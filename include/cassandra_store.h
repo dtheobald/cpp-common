@@ -401,6 +401,7 @@ class Operation
 public:
   /// Virtual destructor.
   virtual ~Operation() {};
+  Operation(): _cass_status(OK) {};
 
   /// @return       - The result code for this operation.
   virtual ResultCode get_result_code();
