@@ -166,6 +166,11 @@ public:
                       const cass::ColumnPath& column_path,
                       const int64_t timestamp,
                       const cass::ConsistencyLevel::type consistency_level) = 0;
+  virtual void get_range_slices(std::vector<cass::KeySlice> & _return,
+                                const cass::ColumnParent& column_parent,
+                                const cass::SlicePredicate& predicate,
+                                const cass::KeyRange& range,
+                                const cass::ConsistencyLevel::type consistency_level) = 0;
 
   //
   // Utility methods for interacting with cassandra. These abstract away the
@@ -390,7 +395,9 @@ public:
   ~RealThriftClient();
 
   void set_keyspace(const std::string& keyspace);
-  void batch_mutate(const std::map<std::string, std::map<std::string, std::vector<cass::Mutation> > >& mutation_map,
+  void batch_mutate(const std::map<std::string,
+                    std::map<std::string,
+                    std::vector<cass::Mutation> > >& mutation_map,
                     const cass::ConsistencyLevel::type consistency_level);
   void get_slice(std::vector<cass::ColumnOrSuperColumn>& _return,
                  const std::string& key,
@@ -406,6 +413,11 @@ public:
               const cass::ColumnPath& column_path,
               const int64_t timestamp,
               const cass::ConsistencyLevel::type consistency_level);
+  void get_range_slices(std::vector<cass::KeySlice> & _return,
+                        const cass::ColumnParent& column_parent,
+                        const cass::SlicePredicate& predicate,
+                        const cass::KeyRange& range,
+                        const cass::ConsistencyLevel::type consistency_level);
 
 private:
   cass::CassandraClient _cass_client;
