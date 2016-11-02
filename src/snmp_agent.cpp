@@ -96,6 +96,12 @@ int snmp_setup(const char* name)
   // Make sure we start as a subagent, not a master agent.
   netsnmp_ds_set_boolean(NETSNMP_DS_APPLICATION_ID, NETSNMP_DS_AGENT_ROLE, 1);
 
+  // Uncomment this line to send AgentX requests over TCP, rather than a unix
+  // domain socket, in order to snoop them with tcpdump. You'll also need to
+  // replace the agentXSocket line in /etc/snmp/snmpd.conf on your node with
+  // 'agentXSocket tcp:localhost:705' and restart snmpd.
+  // netsnmp_ds_set_string(NETSNMP_DS_APPLICATION_ID, NETSNMP_DS_AGENT_X_SOCKET, "tcp:localhost:705");
+
   // Use callback-based logging, and integrate it with the Clearwater logger
   snmp_enable_calllog();
   snmp_register_callback(SNMP_CALLBACK_LIBRARY, SNMP_CALLBACK_LOGGING, logging_callback, NULL);
@@ -123,6 +129,11 @@ int init_snmp_handler_threads(const char* name)
 }
 
 // Cancel the handler thread and shut down the SNMP agent.
+//
+// Calling this on CentOS when the thread has not been created in
+// init_snmp_handler_threads above is dangerous, and can lead to sig11 death.
+// This appears to be a difference in the behaviour of pthread_cancel
+// between CentOS and Ubuntu when it is passed NULL.
 void snmp_terminate(const char* name)
 {
   pthread_cancel(snmp_thread_var);

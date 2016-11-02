@@ -1,8 +1,8 @@
 /**
- * @file syslog_facade.h - Facade to syslog.h
+ * @file snmp_types.h
  *
  * Project Clearwater - IMS in the Cloud
- * Copyright (C) 2014  Metaswitch Networks Ltd
+ * Copyright (C) 2016 Metaswitch Networks Ltd
  *
  * This program is free software: you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the
@@ -34,41 +34,27 @@
  * as those licenses appear in the file LICENSE-OPENSSL.
  */
 
+#ifndef SNMP_TYPES_H_
+#define SNMP_TYPES_H_
 
-#ifndef SYSLOG_FACADE_H__
-#define SYSLOG_FACADE_H__
+namespace SNMP
+{
 
-#include <features.h>
-#define __need___va_list
-#include <stdarg.h>
+enum TimePeriodIndexes
+{
+  scopePrevious5SecondPeriod = 1,
+  scopeCurrent5MinutePeriod = 2,
+  scopePrevious5MinutePeriod = 3,
+};
 
-// Facade to avoid name collision between syslog.h and log.h
-// Note that this is an extern "C" type file and is almost an exact duplicate of syslog.h
+enum AddrTypes
+{
+  Unknown = 0,
+  IPv4 = 1,
+  IPv6 = 2
+};
 
-extern void closelog (void);
-extern void openlog (__const char *__ident, int __option, int __facility);
-extern void syslog (int __pri, __const char *__fmt, ...)
-  __attribute__ ((__format__ (__printf__, 2, 3)));
-
-#define PDLOG_PID         0x01    /* log the pid with each message */
-
-#define PDLOG_EMERG       0       /* system is unusable */
-#define PDLOG_ALERT       1       /* action must be taken immediately */
-#define PDLOG_CRIT        2       /* critical conditions */
-#define PDLOG_ERR         3       /* error conditions */
-#define PDLOG_WARNING     4       /* warning conditions */
-#define PDLOG_NOTICE      5       /* normal but significant condition */
-#define PDLOG_INFO        6       /* informational */
-
-
-#define PDLOG_LOCAL0      (16<<3) /* reserved for local use */
-#define PDLOG_LOCAL1      (17<<3) /* reserved for local use */
-#define PDLOG_LOCAL2      (18<<3) /* reserved for local use */
-#define PDLOG_LOCAL3      (19<<3) /* reserved for local use */
-#define PDLOG_LOCAL4      (20<<3) /* reserved for local use */
-#define PDLOG_LOCAL5      (21<<3) /* reserved for local use */
-#define PDLOG_LOCAL6      (22<<3) /* reserved for local use */
-#define PDLOG_LOCAL7      (23<<3) /* reserved for local use */
-
+}
 
 #endif
+

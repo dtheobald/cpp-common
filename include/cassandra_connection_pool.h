@@ -1,5 +1,6 @@
 /**
- * @file pdlog.cpp
+ * @file cassandra_connection_pool.h  Declaration of derived class for Cassandra
+ * connection pooling.
  *
  * Project Clearwater - IMS in the Cloud
  * Copyright (C) 2016  Metaswitch Networks Ltd
@@ -34,25 +35,44 @@
  * as those licenses appear in the file LICENSE-OPENSSL.
  */
 
-#include <stdarg.h>
-#include <stdio.h>
-#include <string.h>
-#include "pdlog.h"
-#include <boost/filesystem.hpp>
+#ifndef CASSANDRA_CONNECTION_POOL_H__
+#define CASSANDRA_CONNECTION_POOL_H__
 
-void PDLogStatic::init(char *pname)
+#include "thrift/Thrift.h"
+#include "thrift/transport/TSocket.h"
+#include "thrift/transport/TTransport.h"
+#include "thrift/transport/TBufferTransports.h"
+#include "thrift/protocol/TProtocol.h"
+#include "thrift/protocol/TBinaryProtocol.h"
+
+#include "connection_pool.h"
+
+using namespace apache::thrift;
+using namespace apache::thrift::transport;
+using namespace apache::thrift::protocol;
+
+namespace CassandraStore
 {
-  // Get the full path of the executable from the first command line argument
-  boost::filesystem::path p = pname;
+class Client;
 
-  // Copy the filename to a string so that we can be sure of its lifespan -
-  // the memory passed to openlog must be valid for the duration of the program.
-  //
-  // Note that we don't save "filename" here, and so we're technically leaking
-  // this object.  However, its effectively part of static initialisation of
-  // the process - it'll be freed on process exit - so its not leaked in practice.
-  std::string *filename = new std::string(p.filename().c_str());
+class CassandraConnectionPool : public ConnectionPool<Client*>
+{
+public:
+  CassandraConnectionPool();
 
-  // Use logging facility for ENT logs
-  openlog(filename->c_str(), PDLOG_PID, PDLOG_LOCAL7);
-}
+  ~CassandraConnectionPool()
+  {
+    // This call is important to properly destroy the connection pool
+    destroy_connection_pool();
+  }
+
+protected:
+  Client* create_connection(AddrInfo target) override;
+
+  void destroy_connection(AddrInfo target, Client* conn) override;
+
+  long _timeout_ms;
+};
+
+} // namespace CassandraStore
+#endif

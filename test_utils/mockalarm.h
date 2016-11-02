@@ -43,12 +43,25 @@
 class MockAlarm : public Alarm
 {
 public:
-  MockAlarm() : 
-    Alarm("sprout", 0, AlarmDef::CRITICAL) {}
+  MockAlarm(AlarmManager* alarm_manager) :
+    Alarm(alarm_manager, "sprout", 0, AlarmDef::CRITICAL) {}
 
   MOCK_METHOD0(clear, void());
   MOCK_METHOD0(set, void());
   MOCK_METHOD0(get_alarm_state, AlarmState::AlarmCondition());
+};
+
+class MockMultiStateAlarm : public MultiStateAlarm
+{
+public:
+  MockMultiStateAlarm(AlarmManager* alarm_manager) :
+    MultiStateAlarm(alarm_manager, "sprout", 0) {}
+
+  MOCK_METHOD0(set_indeterminate, void());
+  MOCK_METHOD0(set_warning, void());
+  MOCK_METHOD0(set_minor, void());
+  MOCK_METHOD0(set_major, void());
+  MOCK_METHOD0(set_critical, void());
 };
 
 #endif

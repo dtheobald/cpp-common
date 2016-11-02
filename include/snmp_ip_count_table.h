@@ -42,6 +42,7 @@
 
 #include "logger.h"
 #include "snmp_row.h"
+#include "snmp_ip_row.h"
 
 #ifndef SNMP_IP_COUNT_TABLE_H
 #define SNMP_IP_COUNT_TABLE_H
@@ -69,7 +70,7 @@ namespace SNMP
 {
 
 // Row of counters indexed by RFC 2851 IP addresses
-class IPCountRow : public Row
+class IPCountRow : public IPRow
 {
 public:
   IPCountRow(struct in_addr addr);
@@ -81,14 +82,7 @@ public:
   ColumnData get_columns();
 
 protected:
-  int _addr_type;
-  int _addr_len;
   uint32_t _count;
-  union
-  {
-    struct in_addr  v4;
-    struct in6_addr v6;
-  } _addr;
 };
 
 class IPCountTable

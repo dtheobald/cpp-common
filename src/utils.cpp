@@ -49,8 +49,12 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <sys/file.h>
+#include <signal.h>
+#include <sys/stat.h>
+#include <syslog.h>
 
 #include "utils.h"
+#include "log.h"
 
 bool Utils::parse_http_url(const std::string& url, std::string& server, std::string& path)
 {
@@ -266,6 +270,20 @@ void Utils::create_random_token(size_t length,       //< Number of characters.
   }
 }
 
+std::string Utils::hex(const uint8_t* data, size_t len)
+{
+  static const char* const hex_lookup = "0123456789abcdef";
+  std::string result;
+  result.reserve(2 * len);
+  for (size_t ii = 0; ii < len; ++ii)
+  {
+    const uint8_t b = data[ii];
+    result.push_back(hex_lookup[b >> 4]);
+    result.push_back(hex_lookup[b & 0x0f]);
+  }
+  return result;
+}
+
 // This function is from RFC 2617
 void Utils::hashToHex(unsigned char *hash_char, unsigned char *hex_char)
 {
@@ -317,7 +335,7 @@ bool Utils::split_host_port(const std::string& host_port,
   if (close_bracket == host_port.npos)
   {
     // IPv4 connection.  Split the string on the colon.
-    Utils::split_string(host_port, ':', host_port_parts);
+    Utils::split_string(host_port, ':', host_port_parts, 0, false, false, true);
     if (host_port_parts.size() != 2)
     {
       TRC_DEBUG("Malformed host/port %s", host_port.c_str());
@@ -328,7 +346,7 @@ bool Utils::split_host_port(const std::string& host_port,
   {
     // IPv6 connection.  Split the string on ']', which removes any white
     // space from the start and the end, then remove the '[' from the
-    // start of the IP addreess string and the start of the ':' from the start
+    // start of the IP address string and the start of the ':' from the start
     // of the port string.
     Utils::split_string(host_port, ']', host_port_parts);
     if ((host_port_parts.size() != 2) ||
@@ -361,6 +379,11 @@ bool Utils::overflow_less_than(uint32_t a, uint32_t b)
     return ((a - b) > ((uint32_t)(1) << 31));
 }
 
+bool Utils::overflow_less_than(uint64_t a, uint64_t b)
+{
+    return ((a - b) > ((uint64_t)(1) << 63));
+}
+
 int Utils::lock_and_write_pidfile(std::string filename)
 {
   std::string lockfilename = filename + ".lock";
@@ -377,6 +400,303 @@ int Utils::lock_and_write_pidfile(std::string filename)
   FILE* fd = fopen(filename.c_str(), "w");
   fprintf(fd, "%d\n", getpid());
   fclose(fd);
-  
+
   return lockfd;
+}
+
+/// Parse a vector of strings of the form <site>=<store>. Use the name of the
+/// locate GR site to produce the location of the local site's store, and a
+/// vector of the locations of the remote sites' stores. If only one store is
+/// provided, it may not be identified by a site - we just assume it's the
+/// local_site.
+///
+/// @param stores_arg        - the input vector.
+/// @param local_site_name   - the input local site name.
+/// @local_store_location    - the output local store location.
+/// @remote_stores_locations - the output vector of remote store locations.
+/// @returns                 - true if the stores_arg vector contains a set of
+///                            valid values, false otherwise.
+bool Utils::parse_stores_arg(const std::vector<std::string>& stores_arg,
+                             const std::string& local_site_name,
+                             std::string& local_store_location,
+                             std::vector<std::string>& remote_stores_locations)
+{
+  if ((stores_arg.size() == 1) &&
+      (stores_arg.front().find("=") == std::string::npos))
+  {
+    // If only one store is provided then it may not be identified by a site -
+    // we just assume that it is the store in the single local site.
+    local_store_location = stores_arg.front();
+  }
+  else
+  {
+    // If multiple stores are provided and they should all be identified by a
+    // site. Save the local site's store off separately to the remote sites'
+    // stores.
+    for (std::vector<std::string>::const_iterator it = stores_arg.begin();
+         it != stores_arg.end();
+         ++it)
+    {
+      std::string site;
+      std::string store;
+      if (!split_site_store(*it, site, store))
+      {
+        // Expected <site_name>=<domain>.
+        return false;
+      }
+      else if (site == local_site_name)
+      {
+        // This is the local site's store.
+        local_store_location = store;
+      }
+      else
+      {
+        // A remote site store.
+        remote_stores_locations.push_back(store);
+      }
+    }
+  }
+
+  return true;
+}
+
+/// Split a string of the form <site>=<store> into the site and the store. If no
+/// site is specified then assume the whole string is the store, but return
+/// false.
+///
+/// @param site_store - the input string.
+/// @param site       - the output site (or the empty string if no site is
+///                     specified).
+/// @param store      - the output store.
+/// @return           - true if the store is identified by a site, false
+///                     otherwise.
+bool Utils::split_site_store(const std::string& site_store,
+                             std::string& site,
+                             std::string& store)
+{
+  size_t pos = site_store.find("=");
+  if (pos == std::string::npos)
+  {
+    // No site specified.
+    site = "";
+    store = site_store;
+    return false;
+  }
+  else
+  {
+    // Find the site and the store.
+    site = site_store.substr(0, pos);
+    store = site_store.substr(pos+1);
+    return true;
+  }
+}
+
+uint64_t Utils::get_time(clockid_t clock)
+{
+  struct timespec ts;
+  clock_gettime(clock, &ts);
+  uint64_t timestamp = ((uint64_t)ts.tv_sec * 1000) + (ts.tv_nsec / 1000000);
+  return timestamp;
+}
+
+int Utils::daemonize()
+{
+  return daemonize("/dev/null", "/dev/null");
+}
+
+int Utils::daemonize(std::string out, std::string err)
+{
+  TRC_STATUS("Switching to daemon mode");
+
+  // First fork
+  pid_t pid = fork();
+  if (pid == -1)
+  {
+    return errno;
+  }
+  else if (pid > 0)
+  {
+    // Parent process, fork successful, so exit.
+    exit(0);
+  }
+
+  // Redirect standard files to /dev/null
+  if (freopen("/dev/null", "r", stdin) == NULL)
+  {
+    return errno;
+  }
+  if (freopen(out.c_str(), "a", stdout) == NULL)
+  {
+    return errno;
+  }
+  if (freopen(err.c_str(), "a", stderr) == NULL)
+  {
+    return errno;
+  }
+
+  // Create a new session to divorce the child from the tty of the parent.
+  if (setsid() == -1)
+  {
+    return errno;
+  }
+
+  // Clear any restricted umask
+  umask(0);
+
+  // Second fork
+  pid = fork();
+  if (pid == -1)
+  {
+    return errno;
+  }
+  else if (pid > 0)
+  {
+    // Parent process, fork successful, so exit.
+    exit(0);
+  }
+
+  return 0;
+}
+
+void Utils::daemon_log_setup(int argc,
+                             char* argv[],
+                             bool daemon,
+                             std::string& log_directory,
+                             int log_level,
+                             bool log_to_file)
+{
+  // Work out the program name from argv[0], stripping anything before the
+  // final slash.
+  char* prog_name = argv[0];
+  char* slash_ptr = rindex(argv[0], '/');
+  if (slash_ptr != NULL)
+  {
+    prog_name = slash_ptr + 1;
+  }
+
+  // Copy the program name to a string so that we can be sure of its lifespan -
+  // the memory passed to openlog must be valid for the duration of the program.
+  //
+  // Note that we don't save syslog_identity here, and so we're technically leaking
+  // this object. However, its effectively part of static initialisation of
+  // the process - it'll be freed on process exit - so it's not leaked in practice.
+  std::string* syslog_identity = new std::string(prog_name);
+
+  // Open a connection to syslog. This is used for different purposes - e.g. ENT
+  // logs and analytics logs. We use the same facility for all purposes because
+  // calling openlog with a different facility each time we send a log to syslog
+  // is not trivial to make thread-safe.
+  openlog(syslog_identity->c_str(), LOG_PID, LOG_LOCAL7);
+
+  if (daemon)
+  {
+    int errnum;
+
+    if (log_directory != "")
+    {
+      std::string prefix = log_directory + "/" + prog_name;
+      errnum = Utils::daemonize(prefix + "_out.log",
+                                prefix + "_err.log");
+    }
+    else
+    {
+      errnum = Utils::daemonize();
+    }
+
+    if (errnum != 0)
+    {
+      TRC_ERROR("Failed to convert to daemon, %d (%s)", errnum, strerror(errnum));
+      exit(0);
+    }
+  }
+
+  Log::setLoggingLevel(log_level);
+
+  if ((log_to_file) && (log_directory != ""))
+  {
+    Log::setLogger(new Logger(log_directory, prog_name));
+  }
+
+  TRC_STATUS("Log level set to %d", log_level);
+}
+
+bool Utils::is_bracketed_address(const std::string& address)
+{
+  return ((address.size() >= 2) &&
+          (address[0] == '[') &&
+          (address[address.size() - 1] == ']'));
+}
+
+std::string Utils::remove_brackets_from_ip(std::string address)
+{
+  bool bracketed = is_bracketed_address(address);
+  return bracketed ? address.substr(1, address.size() - 2) :
+                     address;
+}
+
+std::string Utils::uri_address(std::string address, int default_port)
+{
+  Utils::IPAddressType addrtype = parse_ip_address(address);
+
+  if (default_port == 0)
+  {
+    if (addrtype == IPAddressType::IPV6_ADDRESS)
+    {
+      address = "[" + address + "]";
+    }
+  }
+  else
+  {
+    std::string port = std::to_string(default_port);
+
+    if (addrtype == IPAddressType::IPV4_ADDRESS ||
+        addrtype == IPAddressType::IPV6_ADDRESS_BRACKETED ||
+        addrtype == IPAddressType::INVALID)
+    {
+      address = address + ":" + port;
+    }
+    else if (addrtype == IPAddressType::IPV6_ADDRESS)
+    {
+      address = "[" + address + "]:" + port;
+    }
+  }
+
+  return address;
+}
+
+Utils::IPAddressType Utils::parse_ip_address(std::string address)
+{
+  // Check if we have a port
+  std::string host;
+  int port;
+  bool with_port = Utils::split_host_port(address, host, port);
+
+  // We only want the host part of the address.
+  host = with_port ? host : address;
+
+  // Check if we're surrounded by []
+  bool with_brackets = is_bracketed_address(host);
+
+  host = with_brackets ? host.substr(1, host.size() - 2) : host;
+
+  // Check if we're IPv4/IPv6/invalid
+  struct in_addr dummy_ipv4_addr;
+  struct in6_addr dummy_ipv6_addr;
+
+  if (inet_pton(AF_INET, host.c_str(), &dummy_ipv4_addr) == 1)
+  {
+    return (with_port) ? IPAddressType::IPV4_ADDRESS_WITH_PORT :
+                         IPAddressType::IPV4_ADDRESS;
+  }
+  else if (inet_pton(AF_INET6, host.c_str(), &dummy_ipv6_addr) == 1)
+  {
+    return (with_port) ? IPAddressType::IPV6_ADDRESS_WITH_PORT :
+                         ((with_brackets) ? IPAddressType::IPV6_ADDRESS_BRACKETED :
+                                            IPAddressType::IPV6_ADDRESS);
+  }
+  else
+  {
+    return (with_port) ? IPAddressType::INVALID_WITH_PORT :
+                         IPAddressType::INVALID;
+  }
 }

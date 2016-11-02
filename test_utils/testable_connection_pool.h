@@ -1,8 +1,9 @@
 /**
- * @file ipv6utils.h
+ * @file mock_connectionpool.h Mock ConnectionPool<int> for testing
+ * ConnectionPool<T>
  *
  * Project Clearwater - IMS in the Cloud
- * Copyright (C) 2014 Metaswitch Networks Ltd
+ * Copyright (C) 2016  Metaswitch Networks Ltd
  *
  * This program is free software: you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the
@@ -34,11 +35,24 @@
  * as those licenses appear in the file LICENSE-OPENSSL.
  */
 
-#ifndef IPV6UTILS_H_
-#define IPV6UTILS_H_
+#include "gmock/gmock.h"
+#include "connection_pool.h"
 
-#include <string>
+class TestableConnectionPool : public ConnectionPool<int>
+{
+public:
+  TestableConnectionPool(time_t max_idle_time_s) : ConnectionPool<int>(max_idle_time_s) {}
+  ~TestableConnectionPool()
+  {
+    destroy_connection_pool();
+  }
 
-bool is_ipv6(std::string address);
+  void set_free_on_error(bool free_on_error)
+  {
+    _free_on_error = free_on_error;
+  }
 
-#endif
+protected:
+  MOCK_METHOD1(create_connection, int(AddrInfo target));
+  MOCK_METHOD2(destroy_connection, void(AddrInfo target, int conn));
+};

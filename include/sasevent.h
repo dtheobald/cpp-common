@@ -42,7 +42,7 @@
 
 namespace SASEvent {
 
-  const std::string CURRENT_RESOURCE_BUNDLE_DATESTAMP = "20160623";
+  const std::string CURRENT_RESOURCE_BUNDLE_DATESTAMP = "20161025";
   const std::string RESOURCE_BUNDLE_NAME = "org.projectclearwater";
   const std::string CURRENT_RESOURCE_BUNDLE =
                  RESOURCE_BUNDLE_NAME + "." + CURRENT_RESOURCE_BUNDLE_DATESTAMP;
@@ -87,6 +87,7 @@ namespace SASEvent {
   const int MMTEL_BASE = 0x860000;
   const int MANGELWURZEL_BASE = 0x870000;
   const int CEDAR_BASE = 0x880000;
+  const int HOUDINI_BASE = 0x890000;
 
   //----------------------------------------------------------------------------
   // Common events and protocol flows.
@@ -113,6 +114,7 @@ namespace SASEvent {
   const int DIAMETER_TX = COMMON_BASE + 0x00000F;
   const int DIAMETER_RX = COMMON_BASE + 0x000010;
   const int DIAMETER_TIMEOUT = COMMON_BASE + 0x000011;
+  const int DIAMETER_MSG_MISSING_AVP = COMMON_BASE + 0x000012;
 
   const int HTTP_ABORT = COMMON_BASE + 0x000012;
   const int HTTP_ABORT_DETAIL = COMMON_BASE + 0x000013;
@@ -133,9 +135,11 @@ namespace SASEvent {
   const int MEMCACHED_DELETE = COMMON_BASE + 0x00010A;
   const int MEMCACHED_DELETE_WITH_TOMBSTONE = COMMON_BASE + 0x00010B;
   const int MEMCACHED_DELETE_FAILURE = COMMON_BASE + 0x00010C;
+  const int MEMCACHED_NO_HOSTS = COMMON_BASE + 0x00010D;
+  const int MEMCACHED_TRY_HOST = COMMON_BASE + 0x00010E;
 
   const int BASERESOLVE_SRV_RESULT = COMMON_BASE + 0x000200;
-  const int BASERESOLVE_A_RESULT = COMMON_BASE + 0x000201;
+  const int BASERESOLVE_A_RESULT_TARGET_SELECT = COMMON_BASE + 0x000201;
   const int DNS_LOOKUP = COMMON_BASE + 0x000202;
   const int DNS_SUCCESS = COMMON_BASE + 0x000203;
   const int DNS_FAILED = COMMON_BASE + 0x000204;
@@ -144,6 +148,9 @@ namespace SASEvent {
   const int CASS_CONNECT_FAIL = COMMON_BASE + 0x0300;
 
   const int QUORUM_FAILURE = COMMON_BASE + 0x0400;
+
+  const int LOAD_MONITOR_ACCEPTED_REQUEST = COMMON_BASE + 0x0500;
+  const int LOAD_MONITOR_REJECTED_REQUEST = COMMON_BASE + 0x0501;
 
 } // namespace SASEvent
 

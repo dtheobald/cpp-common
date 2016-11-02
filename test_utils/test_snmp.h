@@ -47,7 +47,7 @@
 #include "snmp_single_count_by_node_type_table.h"
 #include "snmp_success_fail_count_by_request_type_table.h"
 #include "snmp_cx_counter_table.h"
-
+#include "snmp_ip_time_based_counter_table.h"
 
 #include "snmp_internal/snmp_includes.h"
 using ::testing::AnyOf;
@@ -94,7 +94,7 @@ unsigned int SNMPTest::snmp_get(std::string oid)
 char* SNMPTest::snmp_get_raw(std::string oid, char* buf, int size)
 {
   // Returns integer value found at that OID.
-  std::string command = "snmpget -v2c -Ovq -c clearwater 127.0.0.1:" + alarm_address + " " + oid;
+  std::string command = "snmpget -v2c -Ovqn -c clearwater 127.0.0.1:" + alarm_address + " " + oid;
   std::string mode = "r";
   FILE* fd = popen(command.c_str(), mode.c_str());
   fgets(buf, size, fd);
@@ -127,7 +127,7 @@ std::vector<std::string> SNMPTest::snmp_walk(std::string oid)
     fgets_pointer = fgets(buf, sizeof(buf), fd);
     entry = buf;
     end = entry.find("No more variables left in this MIB View");
-  }  
+  }
   }
   return res;
 }

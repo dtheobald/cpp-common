@@ -37,14 +37,18 @@
 #ifndef UTILS_H_
 #define UTILS_H_
 
+#include <time.h>
+#include <stdint.h>
 #include <math.h>
 #include <algorithm>
 #include <functional>
 #include <string>
+#include <sstream>
 #include <list>
 #include <vector>
 #include <cctype>
 #include <string.h>
+#include <sstream>
 #include <arpa/inet.h>
 
 #include "log.h"
@@ -98,7 +102,89 @@ struct IP46Address
       return false;
     }
   }
+
+  /// Render the address as a string.
+  ///
+  /// Note that inet_ntop (which this function uses under the covers) can
+  /// technically fail. In this situation this function returns the string
+  /// "unknown" (as it is inconvenient if it were allowed to fail).
+  std::string to_string()
+  {
+    char buf[INET6_ADDRSTRLEN];
+
+    if (inet_ntop(af, &addr, buf, sizeof(buf)) != NULL)
+    {
+      return buf;
+    }
+    else
+    {
+      return "unknown";
+    }
+  }
 };
+
+struct AddrInfo
+{
+  IP46Address address;
+  int port;
+  int transport;
+  int priority;
+  int weight;
+
+  AddrInfo():
+    priority(1),
+    weight(1) {};
+
+  bool operator<(const AddrInfo& rhs) const
+  {
+    int addr_cmp = address.compare(rhs.address);
+
+    if (addr_cmp < 0)
+    {
+      return true;
+    }
+    else if (addr_cmp > 0)
+    {
+      return false;
+    }
+    else
+    {
+      return (port < rhs.port) || ((port == rhs.port) && (transport < rhs.transport));
+    }
+  }
+
+  bool operator==(const AddrInfo& rhs) const
+  {
+    return (address.compare(rhs.address) == 0) &&
+      (port == rhs.port) &&
+      (transport == rhs.transport);
+  }
+
+  bool operator!=(const AddrInfo& rhs) const
+  {
+    return !(operator==(rhs));
+  }
+
+  std::string address_and_port_to_string() const
+  {
+    std::stringstream os;
+    char buf[100];
+    os << inet_ntop(address.af, &address.addr, buf, sizeof(buf));
+    os << ":" << port;
+    return os.str();
+  }
+
+  std::string to_string() const
+  {
+    std::stringstream os;
+    os << address_and_port_to_string() << " transport " << transport;
+    return os.str();
+  }
+};
+
+/// Overrides Google Test default print method to avoid compatibility issues
+/// with valgrind
+void PrintTo(const AddrInfo& ai, std::ostream* os);
 
 namespace Utils
 {
@@ -118,6 +204,10 @@ namespace Utils
   };
 
   void hashToHex(unsigned char *hash_char, unsigned char *hex_char);
+
+  // Converts binary data to an ASCII hex-encoded form, e.g. "\x19\xaf"
+  // becomes"19af"
+  std::string hex(const uint8_t* data, size_t len);
 
   /// Splits a URL of the form "http://<servername>[/<path>]" into
   /// servername and path.
@@ -223,14 +313,15 @@ namespace Utils
   }
 
   /// Split the string s using delimiter and store the resulting tokens in order
-  /// at the end of tokens. Only non-empty tokens will be stored; empty tokens are ignored (and not counted).
+  /// at the end of tokens.
   template <class T>  //< container that has T::push_back(std::string)
   void split_string(const std::string& str_in,  //< string to scan (will not be changed)
                     char delimiter,  //< delimiter to use
                     T& tokens,  //< tokens will be added to this list
                     const int max_tokens = 0,  //< max number of tokens to push; last token will be tail of string (delimiters will not be parsed in this section)
                     bool trim = false,  //< trim the string at both ends before splitting?
-                    bool check_for_quotes = false) //< only use delimiters not in quotes
+                    bool check_for_quotes = false,
+                    bool include_empty_tokens = false) //< whether empty tokens are counted
   {
     std::string token;
 
@@ -258,11 +349,12 @@ namespace Utils
             (num_tokens < (max_tokens-1))))
     {
       token = s.substr(token_start_pos, token_end_pos - token_start_pos);
-      if (token.length() > 0)
+      if ((token.length() > 0) || (include_empty_tokens))
       {
         tokens.push_back(token);
         num_tokens++;
       }
+
       token_start_pos = token_end_pos + 1;
       if (check_for_quotes)
       {
@@ -275,7 +367,7 @@ namespace Utils
     }
 
     token = s.substr(token_start_pos);
-    if (token.length() > 0)
+    if ((token.length() > 0) || (include_empty_tokens))
     {
       tokens.push_back(token);
     }
@@ -443,12 +535,68 @@ namespace Utils
   // @return A 64-bit identifier
   uint64_t generate_unique_integer(uint32_t deployment_id, uint32_t instance_id);
 
-  // Compares two 32 bit numbers and returns if a < b.
-  // This also returns true if b hasoverflown, and hence looks like b < a
+  // Compares two 32 bit numbers and returns whether a < b.
+  // This also returns true if b has overflowed, and hence looks like b < a
   bool overflow_less_than(uint32_t a, uint32_t b);
-  
+
+  // Compares two 64 bit numbers and returns whether a < b.
+  // This also returns true if b has overflowed, and hence looks like b < a
+  bool overflow_less_than(uint64_t a, uint64_t b);
+
   int lock_and_write_pidfile(std::string filename);
 
+  bool parse_stores_arg(const std::vector<std::string>& stores_arg,
+                        const std::string& local_site_name,
+                        std::string& local_store_location,
+                        std::vector<std::string>& remote_stores_locations);
+
+  bool split_site_store(const std::string& site_store,
+                        std::string& site,
+                        std::string& store);
+
+  // Gets the current time in milliseconds - just a conversion of clock_gettime
+  uint64_t get_time(clockid_t clock = CLOCK_MONOTONIC);
+
+  // Daemonize the current process, detaching it from the parent and redirecting
+  // file descriptors, with stdout and stderr going to /dev/null.
+  int daemonize();
+
+  // Daemonize the current process, detaching it from the parent and redirecting
+  // file descriptors.
+  int daemonize(std::string out, std::string err);
+
+  // Perform common server setup, daemonizing, and setting up basic logging.
+  void daemon_log_setup(int argc,
+                        char* argv[],
+                        bool daemon,
+                        std::string& log_directory,
+                        int log_level,
+                        bool log_to_file);
+
+  enum IPAddressType {
+    IPV4_ADDRESS,
+    IPV4_ADDRESS_WITH_PORT,
+    IPV6_ADDRESS,
+    IPV6_ADDRESS_BRACKETED,
+    IPV6_ADDRESS_WITH_PORT,
+    INVALID,
+    INVALID_WITH_PORT
+  };
+
+  // Takes a string and reports what type of IP address it is
+  IPAddressType parse_ip_address(std::string address);
+
+  // Takes an IP address and returns it suitable for use in a URI,
+  // i.e, an IPv6 address will be returned in brackets.
+  // If the optional port is passed, this will be appended if the address
+  // doesn't include a port.
+  std::string uri_address(std::string address, int default_port = 0);
+
+  // Removes the brackets from an IPv6 address - e.g. [::1] -> ::1
+  std::string remove_brackets_from_ip(std::string address);
+
+  // Does the passed in address have brackets?
+  bool is_bracketed_address(const std::string& address);
 } // namespace Utils
 
 #endif /* UTILS_H_ */

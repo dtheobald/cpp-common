@@ -35,6 +35,7 @@
  */
 
 #include <string>
+#include "snmp_abstract_scalar.h"
 
 #ifndef SNMP_SCALAR_H
 #define SNMP_SCALAR_H
@@ -60,7 +61,7 @@ namespace SNMP
 {
 
 // Exposes a number as an SNMP Unsigned32.
-class U32Scalar
+class U32Scalar: public AbstractScalar
 {
 public:
   /// Constructor
@@ -69,6 +70,7 @@ public:
   /// @param oid  - The OID for the scalar excluding the trailing ".0"
   U32Scalar(std::string name, std::string oid);
   ~U32Scalar();
+  virtual void set_value(unsigned long val);
   unsigned long value;
 
 private:

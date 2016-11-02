@@ -1,8 +1,8 @@
 /**
- * @file ipv6utils.cpp
+ * @file mockhttpresolver.h Mock HttpResolver
  *
  * Project Clearwater - IMS in the Cloud
- * Copyright (C) 2014 Metaswitch Networks Ltd
+ * Copyright (C) 2015  Metaswitch Networks Ltd
  *
  * This program is free software: you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the
@@ -34,18 +34,30 @@
  * as those licenses appear in the file LICENSE-OPENSSL.
  */
 
-#include "ipv6utils.h"
-#include <string>
-#include <arpa/inet.h>
+#ifndef MOCKHTTPRESOLVER_H__
+#define MOCKHTTPRESOLVER_H__
 
-bool is_ipv6(std::string address)
+#include "gmock/gmock.h"
+#include "httpresolver.h"
+
+class MockHttpResolver : public HttpResolver
 {
-  // Determine if we're IPv4 or IPv6.
-  int http_af = AF_INET;
-  struct in6_addr dummy_addr;
-  if (inet_pton(AF_INET6, address.c_str(), &dummy_addr) == 1)
-  {
-    http_af = AF_INET6;
-  }
-  return (http_af == AF_INET6);
-}
+public:
+  MockHttpResolver() : HttpResolver(nullptr, 0, 0, 0) {}
+  ~MockHttpResolver() {}
+
+  MOCK_METHOD3(resolve_iter, BaseAddrIterator*(const std::string& host,
+                                               int port,
+                                               SAS::TrailId trail));
+  MOCK_METHOD5(resolve, void(const std::string& host,
+                             int port,
+                             int max_targets,
+                             std::vector<AddrInfo>& targets,
+                             SAS::TrailId trail));
+
+  MOCK_METHOD1(blacklist, void(const AddrInfo& ai));
+  MOCK_METHOD1(success, void(const AddrInfo& ai));
+  MOCK_METHOD1(untested, void(const AddrInfo& ai));
+};
+
+#endif

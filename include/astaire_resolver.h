@@ -1,8 +1,8 @@
 /**
- * @file httpresolver.cpp  Implementation of HTTP DNS resolver class.
+ * @file astaire_resolver.h
  *
  * Project Clearwater - IMS in the Cloud
- * Copyright (C) 2014 Metaswitch Networks Ltd
+ * Copyright (C) 2015  Metaswitch Networks Ltd
  *
  * This program is free software: you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the
@@ -34,55 +34,48 @@
  * as those licenses appear in the file LICENSE-OPENSSL.
  */
 
-#include "log.h"
-#include "httpresolver.h"
+#ifndef ASTAIRE_RESOLVER_H__
+#define ASTAIRE_RESOLVER_H__
 
-HttpResolver::HttpResolver(DnsCachedResolver* dns_client,
-                           int address_family,
-                           int blacklist_duration) :
-  BaseResolver(dns_client),
-  _address_family(address_family)
+#include "baseresolver.h"
+#include "sas.h"
+
+class AstaireResolver : public BaseResolver
 {
-  TRC_DEBUG("Creating HTTP resolver");
+public:
+  /// Constructor.
+  ///
+  /// @param dns_client         - Client to actually do the DNS lookup.
+  /// @param address_family     - The address family (AF_INET/AF_INET6) to look
+  ///                             up. Controls whether we do an A or AAAA
+  ///                             lookup.
+  /// @param blacklist_duration - The length of time that failed hosts should
+  ///                             be blacklisted for.
+  AstaireResolver(DnsCachedResolver* dns_client,
+                  int address_family,
+                  int blacklist_duration = DEFAULT_BLACKLIST_DURATION);
 
-  // Create the blacklist.
-  create_blacklist(blacklist_duration);
+  /// Virtual destructor.
+  virtual ~AstaireResolver();
 
-  TRC_STATUS("Created HTTP resolver");
-}
+  /// Resolve a domain representing an astaire cluster to a vector of targets
+  /// in that domain.
+  ///
+  /// @param domain      - The domain name to resolve.
+  /// @param max_targets - The maximum number of targets to return.
+  /// @param targets     - (out) The returned targets.
+  /// @param trail       - SAS trail ID.
+  void resolve(const std::string& domain,
+               int max_targets,
+               std::vector<AddrInfo>& targets,
+               SAS::TrailId trail);
 
-HttpResolver::~HttpResolver()
-{
-  destroy_blacklist();
-}
+  /// Default duration to blacklist hosts after we fail to connect to them.
+  static const int DEFAULT_BLACKLIST_DURATION = 30;
 
-/// Resolve a destination host and realm name to a list of IP addresses,
-/// transports and ports.  HTTP is pretty simple - just look up the A records.
-void HttpResolver::resolve(const std::string& host,
-                           int port,
-                           int max_targets,
-                           std::vector<AddrInfo>& targets,
-                           SAS::TrailId trail)
-{
-  AddrInfo ai;
-  int dummy_ttl = 0;
+private:
+  int _address_family;
+};
 
-  TRC_DEBUG("HttpResolver::resolve for host %s, port %d, family %d",
-            host.c_str(), port, _address_family);
+#endif
 
-  port = (port != 0) ? port : DEFAULT_PORT;
-  targets.clear();
-
-  if (parse_ip_target(host, ai.address))
-  {
-    // The name is already an IP address, so no DNS resolution is possible.
-    TRC_DEBUG("Target is an IP address");
-    ai.port = port;
-    ai.transport = TRANSPORT;
-    targets.push_back(ai);
-  }
-  else
-  {
-    a_resolve(host, _address_family, port, TRANSPORT, max_targets, targets, dummy_ttl, trail);
-  }
-}
