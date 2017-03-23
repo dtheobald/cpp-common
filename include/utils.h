@@ -601,6 +601,7 @@ namespace Utils
 
   // Does the passed in address have brackets?
   bool is_bracketed_address(const std::string& address);
+
 } // namespace Utils
 
 #endif /* UTILS_H_ */

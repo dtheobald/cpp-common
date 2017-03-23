@@ -60,7 +60,8 @@ public:
                  LoadMonitor* load_monitor,
                  SASEvent::HttpLogLevel sas_log_level,
                  BaseCommunicationMonitor* comm_monitor,
-                 const std::string& scheme = "http") :
+                 const std::string& scheme = "http",
+                 bool should_omit_body = false) :
     _scheme(scheme),
     _server(server),
     _client(assert_user,
@@ -68,7 +69,8 @@ public:
             stat_table,
             load_monitor,
             sas_log_level,
-            comm_monitor)
+            comm_monitor,
+            should_omit_body)
   {
     TRC_STATUS("Configuring HTTP Connection");
     TRC_STATUS("  Connection created for server %s", _server.c_str());
@@ -94,8 +96,9 @@ public:
 
   /// Sends a HTTP GET request to _server with the specified parameters
   ///
-  /// @param path           Absolute path to request from server - must start
-  ///                       with "/"
+  /// @param url_tail       Everything after the server part of the URL - must
+  ///                       start with "/" and can contain path, query and
+  ///                       fragment parts.
   /// @param headers        Location to store the header part of the retrieved
   ///                       data
   /// @param response       Location to store retrieved data
@@ -105,17 +108,17 @@ public:
   /// @param trail          SAS trail to use
   ///
   /// @returns              HTTP code representing outcome of request
-  virtual long send_get(const std::string& path,
+  virtual long send_get(const std::string& url_tail,
                         std::map<std::string, std::string>& headers,
                         std::string& response,
                         const std::string& username,
                         std::vector<std::string> headers_to_add,
                         SAS::TrailId trail);
-  virtual long send_get(const std::string& path,
+  virtual long send_get(const std::string& url_tail,
                         std::string& response,
                         const std::string& username,
                         SAS::TrailId trail);
-  virtual long send_get(const std::string& path,
+  virtual long send_get(const std::string& url_tail,
                         std::map<std::string, std::string>& headers,
                         std::string& response,
                         const std::string& username,
@@ -123,8 +126,9 @@ public:
 
   /// Sends a HTTP DELETE request to _server with the specified parameters
   ///
-  /// @param path     Absolute path to request from server - must start
-  ///                 with "/"
+  /// @param url_tail Everything after the server part of the URL - must
+  ///                 start with "/". Contains path, query and fragment
+  ///                 parts.
   /// @param headers  Location to store the header part of the retrieved
   ///                 data
   /// @param response Location to store retrieved data
@@ -134,24 +138,25 @@ public:
   ///                 ignored
   ///
   /// @returns        HTTP code representing outcome of request
-  virtual long send_delete(const std::string& path,
+  virtual long send_delete(const std::string& url_tail,
                            std::map<std::string, std::string>& headers,
                            std::string& response,
                            SAS::TrailId trail,
                            const std::string& body = "",
                            const std::string& username = "");
-  virtual long send_delete(const std::string& path,
+  virtual long send_delete(const std::string& url_tail,
                            SAS::TrailId trail,
                            const std::string& body = "");
-  virtual long send_delete(const std::string& path,
+  virtual long send_delete(const std::string& url_tail,
                            SAS::TrailId trail,
                            const std::string& body,
                            std::string& response);
 
   /// Sends a HTTP PUT request to _server with the specified parameters
   ///
-  /// @param path              Absolute path to request from server - must start
-  ///                          with "/"
+  /// @param url_tail          Everything after the server part of the URL - must
+  ///                          start with "/" and can contain path, query and
+  ///                          fragment parts
   /// @param headers           Location to store the header part of the retrieved
   ///                          data
   /// @param response          Location to store retrieved data
@@ -162,7 +167,7 @@ public:
   ///                          ignored
   ///
   /// @returns                 HTTP code representing outcome of request
-  virtual long send_put(const std::string& path,
+  virtual long send_put(const std::string& url_tail,
                         std::map<std::string, std::string>& headers,
                         std::string& response,
                         const std::string& body,
@@ -170,16 +175,16 @@ public:
                         SAS::TrailId trail,
                         const std::string& username = "");
 
-  virtual long send_put(const std::string& path,
+  virtual long send_put(const std::string& url_tail,
                         const std::string& body,
                         SAS::TrailId trail,
                         const std::string& username = "");
-  virtual long send_put(const std::string& path,
+  virtual long send_put(const std::string& url_tail,
                         std::string& response,
                         const std::string& body,
                         SAS::TrailId trail,
                         const std::string& username = "");
-  virtual long send_put(const std::string& path,
+  virtual long send_put(const std::string& url_tail,
                         std::map<std::string, std::string>& headers,
                         const std::string& body,
                         SAS::TrailId trail,
@@ -187,8 +192,9 @@ public:
 
   /// Sends a HTTP POST request to _server with the specified parameters
   ///
-  /// @param path     Absolute path to request from server - must start
-  ///                 with "/"
+  /// @param url_tail Everything after the server part of the URL - must
+  ///                 start with "/" and can contain path, query and
+  ///                 fragment parts
   /// @param headers  Location to store the header part of the retrieved
   ///                 data
   /// @param response Location to store retrieved data
@@ -198,14 +204,14 @@ public:
   ///                 ignored
   ///
   /// @returns        HTTP code representing outcome of request
-  virtual long send_post(const std::string& path,
+  virtual long send_post(const std::string& url_tail,
                          std::map<std::string, std::string>& headers,
                          std::string& response,
                          const std::string& body,
                          SAS::TrailId trail,
                          const std::string& username = "");
 
-  virtual long send_post(const std::string& path,
+  virtual long send_post(const std::string& url_tail,
                          std::map<std::string, std::string>& headers,
                          const std::string& body,
                          SAS::TrailId trail,
