@@ -52,6 +52,7 @@
 #include <signal.h>
 #include <sys/stat.h>
 #include <syslog.h>
+#include <boost/regex.hpp>
 
 #include "utils.h"
 #include "log.h"
