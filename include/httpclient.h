@@ -89,7 +89,8 @@ public:
              LoadMonitor* load_monitor,
              SASEvent::HttpLogLevel sas_log_level,
              BaseCommunicationMonitor* comm_monitor,
-             bool should_omit_body = false);
+             bool should_omit_body = false,
+             long timeout_ms = -1);
 
   HttpClient(bool assert_user,
              HttpResolver* resolver,
