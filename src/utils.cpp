@@ -254,15 +254,15 @@ bool Utils::is_user_numeric(const char* user, size_t user_len)
 {
   for (size_t i = 0; i < user_len; i++)
   {
-    if ((user[i] == '+') ||
+    if (((user[i] >= '0') &&
+         (user[i] <= '9')) ||
+        (user[i] == '+') ||
         (user[i] == '-') ||
         (user[i] == '.') ||
         (user[i] == '(') ||
         (user[i] == ')') ||
         (user[i] == '[') ||
-        (user[i] == ']') ||
-        ((user[i] >= '0') &&
-         (user[i] <= '9')))
+        (user[i] == ']'))
     {
       continue;
     }
