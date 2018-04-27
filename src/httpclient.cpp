@@ -750,7 +750,7 @@ struct curl_slist* HttpClient::build_headers(std::vector<std::string> headers_to
 }
 
 void HttpClient::set_curl_options_general(CURL* curl,
-                                          std::string body,
+                                          std::string& body,
                                           std::string& doc)
 {
   curl_easy_setopt(curl, CURLOPT_WRITEDATA, &doc);

@@ -285,7 +285,10 @@ private:
                                    std::string uuid_str);
 
   /// Helper function that sets the general curl options in send_request
-  void set_curl_options_general(CURL* curl, std::string body, std::string& doc);
+  ///
+  /// @param body Body to send. This must survive until the request has been
+  /// sent
+  void set_curl_options_general(CURL* curl, std::string& body, std::string& doc);
 
   /// Helper function that sets response header curl options, if required, in
   /// send_request
